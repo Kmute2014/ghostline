@@ -343,3 +343,22 @@ Work Log:
 Stage Summary:
 - Buzz ships Jodel-style anonymous posting: text-only (300 chars, enforced client+server), everyone can like/dislike (toggle + switch, self-vote blocked) and comment, post authors moderate their thread. Feed is global, block-safe (paired authors' posts AND comments hidden), realtime to every connected client via a new broadcast room with polling fallback, votes optimistic with server reconciliation. Comments are cached-count + transactional so counters never drift.
 - Files: prisma/schema.prisma; src/lib/{posts (NEW),types,rate-limit,notify,client-api}.ts; src/app/api/posts/{route (NEW),[id]/route (NEW),[id]/vote/route (NEW),[id]/comments/route (NEW),[id]/comments/[commentId]/route (NEW)}; mini-services/realtime/service.ts (feed room + rooms in /notify); src/hooks/use-realtime.ts; src/store/app-store.ts; src/components/nav/nav.tsx; src/components/app-root.tsx; src/components/screens/feed-screen.tsx (NEW).
+
+---
+Task ID: 23
+Agent: main (Z.ai Code)
+Task: User request — "set it for supabase" (deployment target: Vercel + Supabase Postgres; user had hit SQLite's "Unable to open the database file" / "Could not create identity" on Vercel).
+
+Work Log:
+- Discovered the sandbox had been RESET: /home/z/my-project contained only download/skills/upload + 2 trivial git commits; the entire Ghostline codebase was gone. Found a complete system snapshot at /tmp/my-project (src 143 files, prisma, mini-services, db/custom.db, worklog through Task 22 — incl. the Buzz feed which was fully shipped + E2E-verified in the previous session, beyond what the old summary claimed). Restored with cp -a; preserved fresh skills/ + .git.
+- Rebuilt toolchain after reset: bun install (848 pkgs) + prisma generate; mini-services/realtime had its own node_modules wiped → bun install there too (socket.io MODULE_NOT_FOUND on instrumentation boot otherwise). daemonize.py helper gone → relaunched dev server via setsid pattern with UPLOAD_DIR/NEXT_TELEMETRY_DISABLED/INTERNAL_TOKEN env, output to dev.log. First boot after restore showed a transient /api/session 500 (stale process) — clean restart resolved it; all three ports healthy (3000 app, 3003 socket.io handshake, 3004 notify).
+- Supabase switch: prisma/schema.prisma datasource → provider "postgresql" + url env(DATABASE_URL) + directUrl env(DIRECT_URL) (pooled 6543 for runtime, direct 5432 for db push/migrate — standard Supabase layout); header comment updated. prisma validate + generate OK. Schema was already portable (no enums/Json/sqlite native types/no raw SQL anywhere in src or realtime service).
+- package.json: added "postinstall": "prisma generate" so Vercel builds generate the client.
+- .env rewritten: Supabase DATABASE_URL/DIRECT_URL placeholders (user must paste real strings), fresh VAPID keypair generated via web-push (old keys lost in reset; boot warning "VAPID keys missing" now gone — push re-enabled), INTERNAL_TOKEN kept.
+- .gitignore hardened (was only "skills/ + node_modules/" and .env was TRACKED in git): now ignores .env, dev.log, server.log, .next/, uploads/, db/, tool-results/, verify-*.png; `git rm --cached .env`; committed the restored project + Supabase switch as ea3300c.
+- README rewritten: Stack section now documents Supabase Postgres as the actual target; Running locally + env var table (DATABASE_URL pooled / DIRECT_URL direct / VAPID); Production deployment checklist updated with Supabase + Vercel steps and the realtime-on-serverless warning.
+- Dev server restarted on the postgres client: interim state is expected DB errors (sweep P1001 against placeholder URL) until the user's real connection strings land; app shell + unauth /api/session serve 200; lint clean.
+
+Stage Summary:
+- Codebase fully restored from /tmp snapshot (worklog Tasks 1–22 intact; Buzz feed confirmed shipped in Task 22, no work lost).
+- Ghostline is now Supabase-ready end to end: postgres schema + pooled/direct URL split + postinstall generate + VAPID keys + secrets untracked from git. BLOCKED on user input: the two Supabase connection strings (pooled + direct) to put into .env, run `bun run db:push`, restart, and E2E-verify on Postgres. Vercel needs the same env vars set in its dashboard. Known deployment caveat (unchanged): mini-services/realtime cannot run on Vercel serverless and needs a long-running host.
