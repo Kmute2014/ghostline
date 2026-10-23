@@ -362,3 +362,23 @@ Work Log:
 Stage Summary:
 - Codebase fully restored from /tmp snapshot (worklog Tasks 1–22 intact; Buzz feed confirmed shipped in Task 22, no work lost).
 - Ghostline is now Supabase-ready end to end: postgres schema + pooled/direct URL split + postinstall generate + VAPID keys + secrets untracked from git. BLOCKED on user input: the two Supabase connection strings (pooled + direct) to put into .env, run `bun run db:push`, restart, and E2E-verify on Postgres. Vercel needs the same env vars set in its dashboard. Known deployment caveat (unchanged): mini-services/realtime cannot run on Vercel serverless and needs a long-running host.
+
+---
+Task ID: 24
+Agent: main (Z.ai Code)
+Task: Complete the Supabase switch — wire real connection strings, push schema, verify app end-to-end on Postgres (continuation of Task 23).
+
+Work Log:
+- User supplied the direct connection string (db.vgwnphnjglnizwebildn.supabase.co:5432, password URL-encoded). That host proved IPv6-only (TCP connect fails from IPv4-only sandbox — and would fail on Vercel too).
+- Discovered the project's pooler region by probing all Supabase regions with real PG auth: aws-0-* all "tenant not found" → project uses the NEWER aws-1-* pooler hostnames; aws-1-eu-west-3.pooler.supabase.com authenticated OK.
+- .env written: DATABASE_URL = aws-1-eu-west-3 transaction pooler :6543 with ?pgbouncer=true&sslmode=require (IPv4-safe for Vercel serverless; pgbouncer=true disables prepared statements required on transaction mode); DIRECT_URL = aws-1-eu-west-3 session pooler :5432 (db.* direct host unreachable over IPv4). Same URLs go to Vercel env vars.
+- bun run db:push succeeded — full Ghostline schema created on Supabase (Prisma CLI overrides shell env, which is why it worked while the app didn't).
+- ROOT-CAUSE BUG FOUND: the sandbox shell exports DATABASE_URL=file:/home/z/my-project/db/custom.db globally (sandbox bootstrap .zscripts) — real env vars beat .env file values, so next dev silently used the stale SQLite URL ("the URL must start with the protocol postgresql://" in sweep + identity creation; createAnonymousIdentity's catch{} masked it as "Could not create identity"). Turbopack cache was NOT the issue (rm -rf .next did not help). FIX: launch dev server with explicit DATABASE_URL/DIRECT_URL in the setsid env line — /proc/<pid>/environ verified correct afterwards. Prisma-in-Turbopack itself works fine with the postgres engine.
+- E2E verified on Supabase Postgres: POST /api/session creates identity (nested presence create OK); two-identity API smoke — post to Buzz, feed read, vote +1, vote switch −1 (mutual exclusion), comment, thread read with isOwn/myVote correct; /api/auth/delete for both identities cascaded (0 profiles/posts/votes/comments/sessions remain); agent-browser iPhone 14 session — onboarding (identity → notification prompt → A2HS → main UI), 6-tab nav, Buzz composer → Post via UI, post card rendered with own-post vote rail disabled + delete available; final DB counts all zero.
+- Note: agent-browser fill() left the Post button disabled once (React state not updated by scripted fill) — retyping with real keystrokes (click + ctrl+a + type) worked; raw eval clicks also unreliable, consistent with Task 22 harness notes.
+- dev.log clean: 0 prisma:error; sweeps quiet; delete cascade logged as expected SQL.
+
+Stage Summary:
+- Ghostline now runs fully on Supabase Postgres (project vgwnphnjglnizwebildn, eu-west-3, aws-1-* Supavisor): schema pushed, identity/post/vote/comment/delete flows verified via API AND browser UI, cascade deletes confirmed, dev.log clean.
+- Sandbox-only gotcha documented: shell-exported DATABASE_URL=file: must be overridden explicitly when launching dev servers here; production (Vercel) is unaffected since env comes from the dashboard.
+- Remaining for user: set the same env vars in Vercel (DATABASE_URL/DIRECT_URL/VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/INTERNAL_TOKEN) and push the code; realtime mini-service still needs a long-running host (Vercel serverless limitation, unchanged).
