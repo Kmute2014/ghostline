@@ -85,6 +85,29 @@ curl -X PATCH -H "Authorization: Bearer $MODERATION_TOKEN" \
 
 Without `MODERATION_TOKEN` the endpoint returns 503 (review directly in the DB).
 
+## Deploying to Render (two web services + Supabase)
+
+`render.yaml` (repo root) is a Blueprint defining both services. In the Render
+dashboard: **New → Blueprint → connect the repo** — it creates:
+
+1. **ghostline-web** — Next.js (`npm install && npm run build` → `npm run start:node`,
+   health check `/api/health`). Env vars: `DATABASE_URL` (Supabase pooled 6543,
+   `?pgbouncer=true&sslmode=require`), `DIRECT_URL` (session pooler 5432),
+   `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`, `INTERNAL_TOKEN`, plus after the
+   realtime service exists: `INTERNAL_NOTIFY_URL` (its `/notify` URL) and
+   `NEXT_PUBLIC_REALTIME_URL` (its origin — set before building, it inlines
+   into the client bundle). `DISABLE_INPROCESS_REALTIME=1` is preset.
+2. **ghostline-realtime** — `mini-services/realtime` on a pinned bun
+   (health check `/healthz`, socket.io under `/rt/socket.io`, token-guarded
+   `/notify` on the same public port). Env vars: `DATABASE_URL`, `DIRECT_URL`,
+   `INTERNAL_TOKEN`, `VAPID_*`.
+
+Deploy the realtime service first, then set the two cross-service vars on the
+web service and redeploy. Caveats: free plan spins services down when idle
+(use starter for an always-on chat/presence app); the default disk is
+ephemeral, so move `uploads/` to object storage or attach a persistent disk
+before relying on media.
+
 ## Production deployment checklist
 
 1. **Supabase**: create the project, copy both connection strings (Settings → Database), run

@@ -6,8 +6,16 @@ let socket: Socket | null = null
 let currentToken: string | null = null
 
 /**
- * Singleton socket connection to the realtime mini-service through the
- * gateway (never a direct port — the Caddy gateway needs XTransformPort).
+ * Singleton socket connection to the realtime service.
+ *
+ * - Production (e.g. Render two-service): set NEXT_PUBLIC_REALTIME_URL to the
+ *   realtime service origin ("https://ghostline-rt.onrender.com") at BUILD time
+ *   — NEXT_PUBLIC_ vars are inlined into the client bundle.
+ * - Sandbox: unset → connects same-origin through the Caddy gateway
+ *   (XTransformPort=3003), which forwards the full path + query.
+ *
+ * The server serves engine.io under /rt/socket.io (see mini-services/realtime
+ * service.ts) so one public port can also expose /healthz and /notify.
  */
 export function getSocket(token: string): Socket {
   if (socket && currentToken === token) return socket
@@ -16,7 +24,9 @@ export function getSocket(token: string): Socket {
     socket = null
   }
   currentToken = token
-  socket = io('/?XTransformPort=3003', {
+  const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL
+  socket = io(realtimeUrl || '/?XTransformPort=3003', {
+    path: '/rt/socket.io',
     auth: { token },
     transports: ['websocket', 'polling'],
     forceNew: true,

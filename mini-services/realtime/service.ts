@@ -21,7 +21,11 @@ import { unlink } from 'fs/promises'
 import path from 'path'
 import webpush from 'web-push'
 
-const PORT = 3003
+// NOTE: the public port is resolved LAZILY inside startRealtimeService() —
+// NOT at module level. ESM import hoisting evaluates this module before the
+// standalone entry's body maps PaaS PORT → RT_PORT, and Next.js sets
+// process.env.PORT for its own HTTP server, so an eager read would either
+// miss the mapping or collide with the app port.
 const INTERNAL_PORT = 3004
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? 'ghostline-internal-dev'
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? path.join(process.cwd(), 'uploads')
@@ -51,7 +55,7 @@ function guard<Args extends unknown[]>(fn: (...args: Args) => Promise<void> | vo
 
 async function portBusy(port: number): Promise<boolean> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/socket.io/?EIO=4&transport=polling`, {
+    const res = await fetch(`http://127.0.0.1:${port}/rt/socket.io/?EIO=4&transport=polling`, {
       signal: AbortSignal.timeout(1200),
     })
     const text = await res.text()
@@ -68,15 +72,34 @@ async function portBusy(port: number): Promise<boolean> {
  * Whichever binds :3003 first wins; the other becomes a no-op.
  */
 export async function startRealtimeService(): Promise<void> {
+  // Lazy port resolution — see the note above INTERNAL_PORT.
+  const PORT = Number(process.env.RT_PORT ?? 3003)
   if (await portBusy(PORT)) {
     console.log('[rt] :3003 already served — skipping duplicate start')
     return
   }
 
 const httpServer = createServer()
+// Cross-service entry points on the PUBLIC port (Render two-service topology):
+//   GET  /healthz → platform health check
+//   POST /notify  → token-guarded notify from the Next.js API routes
+// handleInternal is hoisted. Must be registered BEFORE socket.io attaches so
+// engine.io caches this listener — see path note below.
+httpServer.on('request', (req, res) => {
+  const url = req.url ?? ''
+  if (url === '/healthz' || url.startsWith('/healthz?')) {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ ok: true }))
+    return
+  }
+  if (url.startsWith('/notify')) handleInternal(req, res)
+})
 const io = new Server(httpServer, {
-  // DO NOT change the path — the Caddy gateway forwards /?XTransformPort=3003 here
-  path: '/',
+  // Realtime HTTP+WS namespace. Path lives under /rt/socket.io so the same
+  // public port can also serve /healthz and /notify (path '/' would let
+  // engine.io swallow every request). The Caddy gateway forwards the full
+  // path + query, so the sandbox flow is unchanged.
+  path: '/rt/socket.io',
   cors: { origin: '*', methods: ['GET', 'POST'] },
   pingTimeout: 60000,
   pingInterval: 25000,
