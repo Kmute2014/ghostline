@@ -382,3 +382,26 @@ Stage Summary:
 - Ghostline now runs fully on Supabase Postgres (project vgwnphnjglnizwebildn, eu-west-3, aws-1-* Supavisor): schema pushed, identity/post/vote/comment/delete flows verified via API AND browser UI, cascade deletes confirmed, dev.log clean.
 - Sandbox-only gotcha documented: shell-exported DATABASE_URL=file: must be overridden explicitly when launching dev servers here; production (Vercel) is unaffected since env comes from the dashboard.
 - Remaining for user: set the same env vars in Vercel (DATABASE_URL/DIRECT_URL/VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/INTERNAL_TOKEN) and push the code; realtime mini-service still needs a long-running host (Vercel serverless limitation, unchanged).
+
+---
+Task ID: 25
+Agent: main (Z.ai Code)
+Task: User request — "can you help me set up the render?" → make Ghostline Render-deployable (two web services sharing Supabase) and verify the sandbox still works end-to-end after the changes.
+
+Work Log:
+- Read the deployment-critical surfaces: socket-client (hardcoded gateway URL), instrumentation (unconditional in-process realtime boot), realtime service (path '/', loopback-only notify, fixed port 3003), next.config (output standalone ✓, ignoreBuildErrors ✓).
+- socket.io path '/' → '/rt/socket.io': with path '/' engine.io swallows EVERY request on its port, making co-hosted /healthz + /notify impossible; the gateway forwards full path + query so the sandbox flow is unchanged (client now passes path explicitly). Caddy contract comment removed accordingly.
+- Realtime service: added pre-attach request listener on the main http server — GET /healthz (platform probe) + POST /notify (reuses hoisted token-guarded handleInternal) — engine.io caches pre-attach listeners and forwards non-socket.io paths to them; loopback :3004 notify kept for the in-process sandbox topology.
+- Port resolution moved INSIDE startRealtimeService (lazy): first attempt honored process.env.PORT and Next.js sets PORT=3000 for its own server → EADDRINUSE loop discovered on restart (internal :3004 bound, main :3003 dead, uncaughtException suppressed the crash). Now: RT_PORT only, with the standalone index.ts mapping PORT→RT_PORT for PaaS; portBusy() probe updated to the new path.
+- src/lib/socket-client.ts: NEXT_PUBLIC_REALTIME_URL support (build-time inlined, Render realtime origin) with sandbox fallback '/?XTransformPort=3003'; explicit path '/rt/socket.io'.
+- src/instrumentation.ts: DISABLE_INPROCESS_REALTIME=1 skip (web tier on Render must not boot a second realtime instance).
+- New GET /api/health (DB-free liveness for Render healthCheckPath); package.json "start:node": "node .next/standalone/server.js" (Render has no bun runtime).
+- render.yaml Blueprint: ghostline-web (node 20, npm build/start:node) + ghostline-realtime (npm install + pinned bun via curl installer for the TS entry, no-save realtime deps; Prisma client resolves from root node_modules). Secrets sync:false; cross-service wiring documented (INTERNAL_NOTIFY_URL, NEXT_PUBLIC_REALTIME_URL).
+- Removed dead WIP from the snapshot: src/app/api/match/ + src/components/screens/random-chat-screen.tsx (referenced helpers/types that never existed; zero UI callers; tsc errors). src/ tsc now clean; lint clean; build unaffected (ignoreBuildErrors was already true, but clean is clean).
+- DEBUGGING STORY (cost most of the session): after the path change the socket silently never connected. Chain of causes: (1) Turbopack persistent cache served a STALE client bundle without the new path (rm -rf .next fixed — same cache failure mode as Task 23's .env issue); (2) my agent-browser session opened localhost:3000 DIRECTLY, bypassing the Caddy gateway that owns XTransformPort routing — previous sessions' worklog says "via gateway :81"; (3) temporary console probes in use-realtime/socket-client proved getSocket ran with the gateway URL, and opening :81 connected instantly (presence isOnline=true, 2 TCP sockets on :3003). Live broadcast E2E: identity B posts via API → browser feed shows the post without refresh (feed:update over the new path). Debug probes removed; both test identities deleted (cascade verified; one stray Ghost-7096 removed via Prisma deleteMany).
+- Final state: app 200, /api/health ok, rt handshake '0' on /rt/socket.io, /healthz ok, 0 prisma errors; lint + src tsc clean; committed 41e9ee2; README gained a "Deploying to Render" section.
+
+Stage Summary:
+- Ghostline is Render-ready: render.yaml two-service blueprint (web + realtime), single-port realtime (/rt/socket.io + /healthz + token-guarded /notify), client points at NEXT_PUBLIC_REALTIME_URL in prod while the sandbox gateway flow is byte-identical to before (re-verified live through :81).
+- Key lessons recorded: Turbopack dev cache must be rm -rf'd after env/bundle-critical changes (2 incidents); browser E2E must go through the gateway origin, not :3000; realtime port must never honor process.env.PORT inside the Next process.
+- User next steps: push repo to GitHub → Render Blueprint → fill env vars (Supabase strings + VAPID + INTERNAL_TOKEN) → deploy realtime first → set cross-service vars on web → redeploy. Free plan spins down (fine for a test); uploads disk is ephemeral.
