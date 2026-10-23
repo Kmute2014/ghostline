@@ -1,7 +1,3 @@
-// Ghostline — anonymous location-based chat & social discovery
-// PostgreSQL (Supabase). url = pooled connection (serverless-safe),
-// directUrl = direct connection used by `prisma db push` / `migrate` only.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,45 +8,42 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ─── Identity ────────────────────────────────────────────────────────────────
-
 model Profile {
-  id                   String   @id @default(cuid())
-  publicId             String   @unique // public-facing id, e.g. "GX-7K2N9Q"
+  id                   String                    @id @default(cuid())
+  publicId             String                    @unique
   displayName          String
-  inviteCode           String   @unique // e.g. "XK7Q-2M9P"
-  recoveryCode         String   @unique // optional identity recovery
-  avatarFileId         String?  // FK-less by design; authz resolved at serve time
-  nearbyVisible        Boolean  @default(false) // discovery opt-in
-  showInPeople         Boolean  @default(true) // appear in the online People directory
-  defaultStoryAudience String   @default("public") // 'public' | 'friends'
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-
-  sessions       Session[]
-  presence       Presence?
-  location       Location?
-  files          File[]
-  messages       Message[]
-  stories        Story[]
-  storyViews     StoryView[]
-  posts          Post[]
-  postVotes      PostVote[]
-  postComments   PostComment[]
-  contactsOwned  Contact[]     @relation("ContactOwner")
-  contactsSaved  Contact[]     @relation("ContactTarget")
-  blocksMade     BlockedUser[] @relation("Blocker")
-  blocksReceived BlockedUser[] @relation("Blocked")
-  reportsFiled   AbuseReport[] @relation("Reporter")
-  reportsAgainst AbuseReport[] @relation("Reported")
-  conversations  ConversationParticipant[]
-  pushSubscriptions PushSubscription[]
+  inviteCode           String                    @unique
+  recoveryCode         String                    @unique
+  avatarFileId         String?
+  nearbyVisible        Boolean                   @default(false)
+  showInPeople         Boolean                   @default(true)
+  defaultStoryAudience String                    @default("public")
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  reportsAgainst       AbuseReport[]             @relation("Reported")
+  reportsFiled         AbuseReport[]             @relation("Reporter")
+  blocksReceived       BlockedUser[]             @relation("Blocked")
+  blocksMade           BlockedUser[]             @relation("Blocker")
+  contactsSaved        Contact[]                 @relation("ContactTarget")
+  contactsOwned        Contact[]                 @relation("ContactOwner")
+  conversations        ConversationParticipant[]
+  files                File[]
+  location             Location?
+  messages             Message[]
+  posts                Post[]
+  postComments         PostComment[]
+  postVotes            PostVote[]
+  presence             Presence?
+  pushSubscriptions    PushSubscription[]
+  sessions             Session[]
+  stories              Story[]
+  storyViews           StoryView[]
 }
 
 model Session {
   id          String   @id @default(cuid())
-  token       String   @unique // httpOnly cookie credential
-  socketToken String   @unique // handed to the client for realtime handshake
+  token       String   @unique
+  socketToken String   @unique
   userId      String
   createdAt   DateTime @default(now())
   lastSeenAt  DateTime @default(now())
@@ -61,14 +54,13 @@ model Session {
 }
 
 model Presence {
-  userId          String    @id
-  isOnline        Boolean   @default(false)
-  lastHeartbeatAt DateTime  @default(now())
-  lastSeenAt      DateTime  @default(now())
-  user            Profile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String   @id
+  isOnline        Boolean  @default(false)
+  lastHeartbeatAt DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  user            Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Protected coordinates — never returned to other users (distance only)
 model Location {
   userId    String   @id
   lat       Float
@@ -78,22 +70,19 @@ model Location {
   user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// ─── Conversations & messages ────────────────────────────────────────────────
-
 model Conversation {
-  id               String    @id @default(cuid())
-  type             String // 'direct' (invite/nearby/people) | 'group'
-  name             String? // group display name (groups only)
-  joinCode         String?   @unique // groups only: shareable code to join, e.g. "GXK7-2M9P"
-  status           String    @default("active") // 'active' | 'ended'
-  expirationPolicy String    @default("24h") // '24h' | '3months' | 'never'
-  expiresAt        DateTime? // server-computed; null = never
+  id               String                    @id @default(cuid())
+  type             String
+  name             String?
+  joinCode         String?                   @unique
+  status           String                    @default("active")
+  expirationPolicy String                    @default("24h")
+  expiresAt        DateTime?
   createdById      String
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  participants ConversationParticipant[]
-  messages     Message[]
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  participants     ConversationParticipant[]
+  messages         Message[]
 
   @@index([expiresAt])
   @@index([updatedAt])
@@ -101,68 +90,60 @@ model Conversation {
 }
 
 model ConversationParticipant {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   conversationId String
   userId         String
-  joinedAt       DateTime  @default(now())
+  joinedAt       DateTime     @default(now())
   lastReadAt     DateTime?
-
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user         Profile      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           Profile      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
   @@index([userId])
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   conversationId String
   senderId       String
-  type           String   @default("text") // 'text' | 'image' | 'video' | 'system'
+  type           String       @default("text")
   text           String?
-  fileId         String? // FK-less; authz resolved at serve time
-  clientId       String? // client-side dedupe / optimistic id
-  createdAt      DateTime @default(now())
-
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       Profile      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  fileId         String?
+  clientId       String?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         Profile      @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@index([senderId])
 }
 
-// ─── Contacts (one-way saved friends + private nicknames) ───────────────────
-
 model Contact {
   id        String   @id @default(cuid())
   ownerId   String
   contactId String
-  nickname  String? // private alias, only visible to owner
-  favorite  Boolean  @default(false) // favourited contacts pin to the top of Chats
+  nickname  String?
+  favorite  Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  owner   Profile @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  contact Profile @relation("ContactTarget", fields: [contactId], references: [id], onDelete: Cascade)
+  contact   Profile  @relation("ContactTarget", fields: [contactId], references: [id], onDelete: Cascade)
+  owner     Profile  @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@unique([ownerId, contactId])
   @@index([contactId])
 }
 
-// ─── Stories (default 24h lifetime, server-enforced) ─────────────────────────
-
 model Story {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   ownerId   String
-  type      String // 'text' | 'image' | 'video'
+  type      String
   text      String?
-  fileId    String? // FK-less; authz resolved at serve time
-  audience  String   @default("public") // 'public' | 'friends' (creator's saved contacts)
-  status    String   @default("active") // 'active' | 'deleted'
-  createdAt DateTime @default(now())
+  fileId    String?
+  audience  String      @default("public")
+  status    String      @default("active")
+  createdAt DateTime    @default(now())
   expiresAt DateTime
-
-  owner Profile     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  views StoryView[]
+  owner     Profile     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  views     StoryView[]
 
   @@index([ownerId])
   @@index([expiresAt])
@@ -174,28 +155,24 @@ model StoryView {
   storyId  String
   viewerId String
   viewedAt DateTime @default(now())
-
-  story  Story   @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  viewer Profile @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+  story    Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewer   Profile  @relation(fields: [viewerId], references: [id], onDelete: Cascade)
 
   @@unique([storyId, viewerId])
   @@index([viewerId])
 }
 
-// ─── Buzz feed (text-only posts · votes · comments, à la Jodel) ──────────────
-
 model Post {
-  id           String   @id @default(cuid())
+  id           String        @id @default(cuid())
   authorId     String
-  text         String // plain text only — no pictures, no videos
-  voteScore    Int      @default(0) // cached: up − down (source of truth = PostVote rows)
-  commentCount Int      @default(0) // cached counter (source of truth = PostComment rows)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  author   Profile       @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  votes    PostVote[]
-  comments PostComment[]
+  text         String
+  voteScore    Int           @default(0)
+  commentCount Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  author       Profile       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments     PostComment[]
+  votes        PostVote[]
 
   @@index([createdAt])
   @@index([authorId])
@@ -205,11 +182,10 @@ model PostVote {
   id        String   @id @default(cuid())
   postId    String
   userId    String
-  value     Int // 1 = like (up) | -1 = dislike (down)
+  value     Int
   createdAt DateTime @default(now())
-
-  post Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId])
   @@index([userId])
@@ -221,57 +197,47 @@ model PostComment {
   authorId  String
   text      String
   createdAt DateTime @default(now())
-
-  post   Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author Profile @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    Profile  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId, createdAt])
   @@index([authorId])
 }
 
-// ─── Files (local object storage; served only via authorized API) ────────────
-
 model File {
   id          String   @id @default(cuid())
   ownerId     String
-  kind        String // 'image' | 'video' | 'avatar'
+  kind        String
   mime        String
   size        Int
-  storagePath String // relative path inside uploads/
+  storagePath String
   createdAt   DateTime @default(now())
-
-  owner Profile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       Profile  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
 }
 
-// ─── Web Push (offline notifications) ────────────────────────────────────────
-
 model PushSubscription {
   id        String   @id @default(cuid())
   userId    String
-  endpoint  String   @unique // unique per browser profile
-  p256dh    String // client public key
-  auth      String // auth secret
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
   userAgent String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
-
-// ─── Safety ──────────────────────────────────────────────────────────────────
 
 model BlockedUser {
   id        String   @id @default(cuid())
   blockerId String
   blockedId String
   createdAt DateTime @default(now())
-
-  blocker Profile @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
-  blocked Profile @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  blocked   Profile  @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  blocker   Profile  @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
 
   @@unique([blockerId, blockedId])
   @@index([blockedId])
@@ -282,14 +248,13 @@ model AbuseReport {
   reporterId     String
   reportedUserId String?
   conversationId String?
-  reason         String // 'harassment' | 'spam' | 'inappropriate_content' | 'impersonation' | 'underage' | 'other'
+  reason         String
   details        String?
-  status         String    @default("open") // 'open' | 'reviewing' | 'resolved' | 'dismissed'
+  status         String    @default("open")
   createdAt      DateTime  @default(now())
   resolvedAt     DateTime?
-
-  reporter     Profile  @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
-  reportedUser Profile? @relation("Reported", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  reportedUser   Profile?  @relation("Reported", fields: [reportedUserId], references: [id])
+  reporter       Profile   @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([reporterId])
