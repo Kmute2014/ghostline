@@ -1,0 +1,417 @@
+"use client";
+
+import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { motion, type Transition } from 'framer-motion'
+import {
+  Users,
+  Search,
+  RefreshCw,
+  EyeOff,
+  MessageCircle,
+  MessagesSquare,
+  Wifi,
+  KeyRound,
+  Share2,
+  Copy,
+  Check,
+  Star,
+} from 'lucide-react'
+import { api, ApiClientError } from '@/lib/client-api'
+import { useAppStore } from '@/store/app-store'
+import { UserAvatar } from '@/components/shared/user-avatar'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import type { OnlinePerson } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import { CodeSearchDialog } from '@/components/screens/code-search-dialog'
+import { copyWithToast } from '@/components/screens/profile/profile-bits'
+
+const spring: Transition = { type: 'spring', stiffness: 400, damping: 34 }
+
+/**
+ * People — the live online directory. No matching, no queue: everyone who is
+ * online (and opted in) is listed in realtime; tap a person to open a chat
+ * instantly. Existing conversations re-open instead of duplicating.
+ */
+export function PeopleScreen() {
+  const queryClient = useQueryClient()
+  const profile = useAppStore((s) => s.profile)
+  const setProfile = useAppStore((s) => s.setProfile)
+  const openConversation = useAppStore((s) => s.openConversation)
+
+  const [search, setSearch] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const [openingId, setOpeningId] = useState<string | null>(null)
+  const [favBusyId, setFavBusyId] = useState<string | null>(null)
+  const [codeOpen, setCodeOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const people = useQuery({
+    queryKey: ['people'],
+    queryFn: api.getPeople,
+    refetchInterval: 20_000, // safety net; presence pushes refresh this live
+  })
+
+  // Share link for the invite card (the code itself comes from the store profile).
+  const invite = useQuery({
+    queryKey: ['invite'],
+    queryFn: api.getInvite,
+    enabled: !!profile?.inviteCode,
+  })
+
+  async function copyInvite() {
+    if (!profile?.inviteCode) return
+    const ok = await copyWithToast(profile.inviteCode, 'Invite code copied')
+    if (ok) {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    }
+  }
+
+  async function shareInvite() {
+    const code = profile?.inviteCode
+    if (!code) return
+    const shareUrl = invite.data?.shareUrl
+    const text = shareUrl
+      ? `Add me on Ghostline — my code: ${code} or open ${shareUrl}`
+      : `Add me on Ghostline — my code: ${code}`
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Ghostline', text })
+        return
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      // Any other share failure falls through to the clipboard fallback.
+    }
+    await copyWithToast(text, 'Invite copied — paste it anywhere.')
+  }
+
+  async function refresh() {
+    setRefreshing(true)
+    await people.refetch()
+    setRefreshing(false)
+  }
+
+  async function toggleVisible(next: boolean) {
+    if (!profile) return
+    const prev = profile.showInPeople
+    setProfile({ ...profile, showInPeople: next }) // optimistic
+    try {
+      const updated = await api.updateMe({ showInPeople: next })
+      setProfile(updated)
+      queryClient.invalidateQueries({ queryKey: ['session'] })
+      toast.success(
+        next
+          ? 'You are visible in People while online.'
+          : 'You are hidden — others can no longer see you in People.'
+      )
+    } catch (err) {
+      setProfile({ ...profile, showInPeople: prev }) // revert
+      toast.error(err instanceof ApiClientError ? err.message : 'Could not update visibility.')
+    }
+  }
+
+  /** One tap = open (or start) the chat. No expiration prompt, no matching. */
+  async function openChat(person: OnlinePerson) {
+    if (openingId) return
+    setOpeningId(person.publicId)
+    try {
+      if (person.conversationId) {
+        openConversation(person.conversationId)
+        return
+      }
+      const res = await api.createConversation(person.publicId, 'never')
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['people'] })
+      openConversation(res.conversation.id)
+    } catch (err) {
+      toast.error(
+        err instanceof ApiClientError ? err.message : `Could not open a chat with ${person.displayName}.`
+      )
+      queryClient.invalidateQueries({ queryKey: ['people'] })
+    } finally {
+      setOpeningId(null)
+    }
+  }
+
+  /** Star a person: favourited users always pin to the top of the Chats list. */
+  async function toggleFavorite(person: OnlinePerson) {
+    if (favBusyId) return
+    const next = !person.favorited
+    setFavBusyId(person.publicId)
+    const patchCache = (favorited: boolean) =>
+      queryClient.setQueryData<{ users: OnlinePerson[]; count: number }>(['people'], (old) =>
+        old
+          ? {
+              ...old,
+              users: old.users.map((p) => (p.publicId === person.publicId ? { ...p, favorited } : p)),
+            }
+          : old
+      )
+    patchCache(next) // optimistic
+    try {
+      await api.setContactFavorite(person.publicId, next)
+      toast.success(
+        next
+          ? `${person.displayName} favourited — they stay on top of your Chats.`
+          : `${person.displayName} removed from favourites.`
+      )
+      queryClient.invalidateQueries({ queryKey: ['people'] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['contacts'] })
+    } catch (err) {
+      patchCache(!next) // revert
+      toast.error(err instanceof ApiClientError ? err.message : 'Could not update favourite.')
+    } finally {
+      setFavBusyId(null)
+    }
+  }
+
+  const users = people.data?.users ?? []
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return users
+    return users.filter((u) => u.displayName.toLowerCase().includes(q))
+  }, [users, search])
+
+  const hidden = profile ? !profile.showInPeople : false
+
+  return (
+    <div className="flex-1 flex flex-col max-w-2xl w-full mx-auto p-4 gap-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" aria-hidden /> People
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5" aria-live="polite">
+            {people.isLoading
+              ? 'Checking who is around…'
+              : `${users.length} ${users.length === 1 ? 'person' : 'people'} online right now — say hi to anyone.`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setCodeOpen(true)}
+            aria-label="Find someone by invite code"
+            title="Find someone by invite code"
+          >
+            <KeyRound className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={refresh} disabled={refreshing} aria-label="Refresh people list">
+            <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Your invite code — tap the card to copy, Share for the deep link */}
+      {profile?.inviteCode && (
+        <motion.div whileTap={{ scale: 0.98 }} transition={spring}>
+          <Card
+            className="cursor-pointer select-none hover:border-primary/40 transition-colors"
+            role="button"
+            tabIndex={0}
+            aria-label="Copy your invite code"
+            onClick={() => void copyInvite()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                void copyInvite()
+              }
+            }}
+          >
+            <CardContent className="p-3.5 flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10" aria-hidden>
+                <KeyRound className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Your invite code · tap to copy
+                </p>
+                <p className="font-mono text-sm tracking-[0.18em] truncate">{profile.inviteCode}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void shareInvite()
+                }}
+                aria-label="Share your invite code"
+              >
+                <Share2 className="h-4 w-4" aria-hidden />
+                Share
+              </Button>
+              <span className="shrink-0 text-muted-foreground" aria-hidden>
+                {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              </span>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Own visibility hint */}
+      {hidden && (
+        <Card className="border-amber-500/40 bg-amber-500/[0.05]">
+          <CardContent className="p-3.5 flex items-center gap-3">
+            <EyeOff className="h-4 w-4 text-amber-500 shrink-0" aria-hidden />
+            <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">You're invisible.</span> You can still see
+              and message others, but nobody sees you in this list.
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Switch
+                id="people-visible-inline"
+                checked={false}
+                onCheckedChange={(v) => v && toggleVisible(true)}
+                aria-label="Turn on my visibility in People"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Search */}
+      {users.length > 3 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by display name…"
+            className="pl-9"
+            aria-label="Search online people"
+          />
+        </div>
+      )}
+
+      {/* List */}
+      {people.isLoading ? (
+        <div className="space-y-2.5" role="status" aria-label="Loading people">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-[72px] w-full rounded-xl" />
+          ))}
+        </div>
+      ) : people.isError ? (
+        <Card>
+          <CardContent className="p-6 text-center space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {people.error instanceof ApiClientError ? people.error.message : 'Could not load online people.'}
+            </p>
+            <Button variant="outline" onClick={() => people.refetch()}>Try again</Button>
+          </CardContent>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center space-y-3">
+            {search ? (
+              <>
+                <Search className="h-9 w-9 mx-auto text-muted-foreground/60" aria-hidden />
+                <p className="text-sm text-muted-foreground">
+                  No online person matches “{search}”.
+                </p>
+              </>
+            ) : (
+              <>
+                <Wifi className="h-9 w-9 mx-auto text-muted-foreground/60" aria-hidden />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Nobody else is online at the moment. This list updates live — leave the app open
+                  and people will appear here as they connect.
+                </p>
+                {hidden && (
+                  <p className="text-xs text-muted-foreground">
+                    Tip: with visibility off you stay here alone — flip the switch above to be seen.
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <ul className="space-y-2.5" aria-label="People online now">
+          {filtered.map((u) => (
+            <li key={u.publicId}>
+              <motion.div whileTap={{ scale: 0.97 }} transition={spring}>
+                <Card className="hover:border-primary/40 transition-colors">
+                  <CardContent className="p-3.5 flex items-center gap-3">
+                    <button
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                      onClick={() => openChat(u)}
+                      disabled={openingId === u.publicId}
+                      aria-label={`Open chat with ${u.displayName}`}
+                    >
+                      <UserAvatar
+                        displayName={u.displayName}
+                        publicId={u.publicId}
+                        avatarUrl={u.avatarUrl}
+                        online
+                        size={44}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{u.displayName}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+                          Online now
+                        </p>
+                      </div>
+                      {u.conversationId && (
+                        <span className="shrink-0 text-muted-foreground" title="You already have a chat">
+                          <MessagesSquare className="h-4 w-4" aria-hidden />
+                          <span className="sr-only">Existing chat</span>
+                        </span>
+                      )}
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 h-9 w-9"
+                      onClick={() => toggleFavorite(u)}
+                      disabled={favBusyId === u.publicId}
+                      aria-pressed={u.favorited}
+                      aria-label={u.favorited ? `Remove ${u.displayName} from favourites` : `Favourite ${u.displayName}`}
+                      title={u.favorited ? 'Favourited — pinned in Chats' : 'Favourite'}
+                    >
+                      <Star className={cn('h-4.5 w-4.5', u.favorited && 'fill-amber-400 text-amber-400')} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openChat(u)}
+                      disabled={openingId === u.publicId}
+                      className="shrink-0"
+                    >
+                      <MessageCircle className="h-4 w-4 mr-1" aria-hidden />
+                      {u.conversationId ? 'Open' : 'Chat'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Label className="sr-only" htmlFor="people-visible-inline">Show me in People</Label>
+      <p className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5 mt-auto">
+        <Users className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
+        <span>
+          Everyone here is online right now — presence comes from the server, not the device. Tap a
+          person to start chatting instantly; no matching, no waiting. Control your own visibility
+          from your Profile.
+        </span>
+      </p>
+
+      <CodeSearchDialog open={codeOpen} onClose={() => setCodeOpen(false)} />
+    </div>
+  )
+}

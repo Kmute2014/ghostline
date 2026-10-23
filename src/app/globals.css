@@ -1,0 +1,200 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-glow: var(--glow);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Ghostline default: deep charcoal-navy with a violet signal color */
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.185 0.03 285);
+  --foreground: oklch(0.95 0.01 285);
+  --card: oklch(0.225 0.035 285);
+  --card-foreground: oklch(0.95 0.01 285);
+  --popover: oklch(0.21 0.035 285);
+  --popover-foreground: oklch(0.95 0.01 285);
+  --primary: oklch(0.65 0.23 295);
+  --primary-foreground: oklch(0.98 0.01 290);
+  --secondary: oklch(0.27 0.04 285);
+  --secondary-foreground: oklch(0.95 0.01 285);
+  --muted: oklch(0.26 0.035 285);
+  --muted-foreground: oklch(0.68 0.03 285);
+  --accent: oklch(0.30 0.06 295);
+  --accent-foreground: oklch(0.95 0.02 295);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+  --border: oklch(0.32 0.04 285);
+  --input: oklch(0.30 0.04 285);
+  --ring: oklch(0.65 0.23 295);
+  --glow: oklch(0.65 0.23 295 / 0.35);
+  --chart-1: oklch(0.65 0.23 295);
+  --chart-2: oklch(0.72 0.15 175);
+  --chart-3: oklch(0.75 0.15 85);
+  --chart-4: oklch(0.68 0.19 340);
+  --chart-5: oklch(0.72 0.14 60);
+  --sidebar: oklch(0.165 0.03 285);
+  --sidebar-foreground: oklch(0.95 0.01 285);
+  --sidebar-primary: oklch(0.65 0.23 295);
+  --sidebar-primary-foreground: oklch(0.98 0.01 290);
+  --sidebar-accent: oklch(0.27 0.05 295);
+  --sidebar-accent-foreground: oklch(0.95 0.02 295);
+  --sidebar-border: oklch(0.30 0.04 285);
+  --sidebar-ring: oklch(0.65 0.23 295);
+}
+
+/* Optional light theme (toggleable, dark remains the identity) */
+.light {
+  --background: oklch(0.975 0.005 285);
+  --foreground: oklch(0.18 0.02 285);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 285);
+  --primary: oklch(0.55 0.24 295);
+  --primary-foreground: oklch(0.99 0.01 290);
+  --secondary: oklch(0.945 0.01 285);
+  --secondary-foreground: oklch(0.22 0.02 285);
+  --muted: oklch(0.945 0.01 285);
+  --muted-foreground: oklch(0.50 0.02 285);
+  --accent: oklch(0.93 0.03 295);
+  --accent-foreground: oklch(0.30 0.08 295);
+  --destructive: oklch(0.58 0.22 25);
+  --destructive-foreground: oklch(0.99 0.01 25);
+  --border: oklch(0.90 0.01 285);
+  --input: oklch(0.90 0.01 285);
+  --ring: oklch(0.55 0.24 295);
+  --glow: oklch(0.55 0.24 295 / 0.25);
+  --sidebar: oklch(0.965 0.008 285);
+  --sidebar-foreground: oklch(0.18 0.02 285);
+  --sidebar-primary: oklch(0.55 0.24 295);
+  --sidebar-primary-foreground: oklch(0.99 0.01 290);
+  --sidebar-accent: oklch(0.93 0.03 295);
+  --sidebar-accent-foreground: oklch(0.30 0.08 295);
+  --sidebar-border: oklch(0.90 0.01 285);
+  --sidebar-ring: oklch(0.55 0.24 295);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01";
+  }
+}
+
+/* Subtle custom scrollbar for chat/lists */
+.ghostline-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.ghostline-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ghostline-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0.38 0.05 285);
+  border-radius: 999px;
+}
+.ghostline-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.48 0.08 295);
+}
+
+/* Pulsing signal dot for presence */
+@keyframes signal-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--glow); }
+  50% { box-shadow: 0 0 0 5px transparent; }
+}
+.signal-dot {
+  animation: signal-pulse 2s ease-in-out infinite;
+}
+
+/* Searching radar sweep */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.radar-sweep {
+  animation: radar-sweep 1.6s linear infinite;
+  transform-origin: center;
+}
+
+/* ── iOS safe areas + native feel (Task 14-b) ──────────────────────────── */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+html { height: -webkit-fill-available; }
+body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
+.app-shell { min-height: 100dvh; }
+.no-select { -webkit-user-select: none; user-select: none; }
+.touch-scroll { -webkit-overflow-scrolling: touch; }
+
+/* Header height variable so full-height views (chat) clear the notch too. */
+:root { --gl-header-h: 3.5rem; }
+
+/* When installed, grow the header to clear the notch / Dynamic Island and
+   keep sticky top offsets + height calcs in sync via --gl-header-h. */
+@media (display-mode: standalone) {
+  header.app-header {
+    padding-top: env(safe-area-inset-top);
+    height: calc(3.5rem + env(safe-area-inset-top));
+  }
+  :root { --gl-header-h: calc(3.5rem + env(safe-area-inset-top)); }
+}
+
+/* ── WhatsApp-style chat viewport (Task 16) ────────────────────────────── */
+/* Full-height chat under the app header that lifts above the software
+   keyboard: ChatView writes the keyboard overlap into --gl-kb via the
+   visualViewport API (iOS ignores interactive-widget=resizes-content).
+   Written as plain CSS because Tailwind arbitrary values with nested
+   var(…, …) calc() don't compile reliably. */
+:root { --gl-kb: 0px; }
+.gl-chat-viewport {
+  height: calc(100dvh - var(--gl-header-h, 3.5rem) - var(--gl-kb, 0px));
+}
+@media (min-width: 768px) {
+  .gl-chat-viewport {
+    height: calc(100dvh - var(--gl-header-h, 3.5rem) - 49px);
+  }
+}
+
+/* recompile trigger */

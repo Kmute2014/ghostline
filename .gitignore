@@ -1,2 +1,11 @@
 skills/
 node_modules/
+.env
+.env*.local
+dev.log
+server.log
+.next/
+uploads/
+db/
+tool-results/
+verify-*.png
