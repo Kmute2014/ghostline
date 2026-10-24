@@ -15,7 +15,6 @@ import {
   Share2,
   Copy,
   Check,
-  Star,
 } from 'lucide-react'
 import { api, ApiClientError } from '@/lib/client-api'
 import { useAppStore } from '@/store/app-store'
@@ -47,7 +46,6 @@ export function PeopleScreen() {
   const [search, setSearch] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [openingId, setOpeningId] = useState<string | null>(null)
-  const [favBusyId, setFavBusyId] = useState<string | null>(null)
   const [codeOpen, setCodeOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -137,39 +135,6 @@ export function PeopleScreen() {
       queryClient.invalidateQueries({ queryKey: ['people'] })
     } finally {
       setOpeningId(null)
-    }
-  }
-
-  /** Star a person: favourited users always pin to the top of the Chats list. */
-  async function toggleFavorite(person: OnlinePerson) {
-    if (favBusyId) return
-    const next = !person.favorited
-    setFavBusyId(person.publicId)
-    const patchCache = (favorited: boolean) =>
-      queryClient.setQueryData<{ users: OnlinePerson[]; count: number }>(['people'], (old) =>
-        old
-          ? {
-              ...old,
-              users: old.users.map((p) => (p.publicId === person.publicId ? { ...p, favorited } : p)),
-            }
-          : old
-      )
-    patchCache(next) // optimistic
-    try {
-      await api.setContactFavorite(person.publicId, next)
-      toast.success(
-        next
-          ? `${person.displayName} favourited — they stay on top of your Chats.`
-          : `${person.displayName} removed from favourites.`
-      )
-      queryClient.invalidateQueries({ queryKey: ['people'] })
-      queryClient.invalidateQueries({ queryKey: ['conversations'] })
-      queryClient.invalidateQueries({ queryKey: ['contacts'] })
-    } catch (err) {
-      patchCache(!next) // revert
-      toast.error(err instanceof ApiClientError ? err.message : 'Could not update favourite.')
-    } finally {
-      setFavBusyId(null)
     }
   }
 
@@ -343,7 +308,7 @@ export function PeopleScreen() {
                 <Card className="relative h-[68px] overflow-hidden rounded-lg py-1.5 shadow-none hover:border-primary/40 transition-colors">
                   <CardContent className="h-full px-1 py-0">
                     <button
-                      className="flex h-full w-full min-w-0 flex-col items-center justify-center gap-1 text-center"
+                      className="flex h-full w-full min-w-0 touch-manipulation flex-col items-center justify-center gap-1 text-center"
                       onClick={() => openChat(u)}
                       disabled={openingId === u.publicId}
                       aria-label={`Open chat with ${u.displayName}, online now${u.conversationId ? ', existing conversation' : ''}`}
@@ -362,18 +327,6 @@ export function PeopleScreen() {
                         )}
                       </span>
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0.5 top-0.5 h-6 w-6 rounded-full bg-background/80"
-                      onClick={() => toggleFavorite(u)}
-                      disabled={favBusyId === u.publicId}
-                      aria-pressed={u.favorited}
-                      aria-label={u.favorited ? `Remove ${u.displayName} from favourites` : `Favourite ${u.displayName}`}
-                      title={u.favorited ? 'Favourited — pinned in Chats' : 'Favourite'}
-                    >
-                      <Star className={cn('h-3.5 w-3.5', u.favorited && 'fill-amber-400 text-amber-400')} />
-                    </Button>
                   </CardContent>
                 </Card>
               </motion.div>

@@ -25,6 +25,7 @@ import {
   LogOut,
   Trash2,
   Crown,
+  Star,
 } from 'lucide-react'
 import { api, ApiClientError } from '@/lib/client-api'
 import { getSocket, currentSocketToken } from '@/lib/socket-client'
@@ -321,6 +322,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   const [inviteInfo, setInviteInfo] = useState<{ joinCode: string; shareUrl: string } | null>(null)
   const [inviteLoading, setInviteLoading] = useState(false)
   const [rotating, setRotating] = useState(false)
+  const [favoriteBusy, setFavoriteBusy] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -622,6 +624,28 @@ export function ChatView({ conversationId }: { conversationId: string }) {
     }
   }
 
+  async function toggleFavorite() {
+    if (!conv?.other || favoriteBusy) return
+    const next = !conv.other.favorited
+    setFavoriteBusy(true)
+    try {
+      await api.setContactFavorite(conv.other.publicId, next)
+      toast.success(
+        next
+          ? `${conv.other.displayName} added to favourites.`
+          : `${conv.other.displayName} removed from favourites.`
+      )
+      queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['contacts'] })
+      queryClient.invalidateQueries({ queryKey: ['people'] })
+    } catch (err) {
+      toast.error(err instanceof ApiClientError ? err.message : 'Could not update favourite.')
+    } finally {
+      setFavoriteBusy(false)
+    }
+  }
+
   async function block() {
     if (!conv?.other) return
     try {
@@ -777,6 +801,19 @@ export function ChatView({ conversationId }: { conversationId: string }) {
             )}
           </p>
         </div>
+        {!isGroup && other && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleFavorite}
+            disabled={favoriteBusy}
+            aria-pressed={other.favorited}
+            aria-label={other.favorited ? `Remove ${other.displayName} from favourites` : `Favourite ${other.displayName}`}
+            title={other.favorited ? 'Remove from favourites' : 'Add to favourites'}
+          >
+            <Star className={cn('h-4 w-4', other.favorited && 'fill-amber-400 text-amber-400')} />
+          </Button>
+        )}
         <Button variant="ghost" size="icon" onClick={() => { setRenaming(displayName); setSettingsOpen(true) }} aria-label="Chat settings">
           <Settings2 className="h-5 w-5" />
         </Button>
