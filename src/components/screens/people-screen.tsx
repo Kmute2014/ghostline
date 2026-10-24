@@ -9,7 +9,6 @@ import {
   Search,
   RefreshCw,
   EyeOff,
-  MessageCircle,
   MessagesSquare,
   Wifi,
   KeyRound,
@@ -184,14 +183,14 @@ export function PeopleScreen() {
   const hidden = profile ? !profile.showInPeople : false
 
   return (
-    <div className="flex-1 flex flex-col max-w-2xl w-full mx-auto p-4 gap-4">
+    <div className="flex-1 flex flex-col max-w-2xl w-full mx-auto p-3 gap-2.5">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" aria-hidden /> People
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5" aria-live="polite">
+          <p className="text-[11px] text-muted-foreground mt-0.5" aria-live="polite">
             {people.isLoading
               ? 'Checking who is around…'
               : `${users.length} ${users.length === 1 ? 'person' : 'people'} online right now — say hi to anyone.`}
@@ -229,28 +228,27 @@ export function PeopleScreen() {
               }
             }}
           >
-            <CardContent className="p-3.5 flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10" aria-hidden>
-                <KeyRound className="h-4 w-4 text-primary" />
+            <CardContent className="p-2.5 flex items-center gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10" aria-hidden>
+                <KeyRound className="h-3.5 w-3.5 text-primary" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Your invite code · tap to copy
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Invite code · tap to copy
                 </p>
-                <p className="font-mono text-sm tracking-[0.18em] truncate">{profile.inviteCode}</p>
+                <p className="font-mono text-xs tracking-[0.15em] truncate">{profile.inviteCode}</p>
               </div>
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-9 shrink-0"
+                size="icon"
+                className="h-8 w-8 shrink-0"
                 onClick={(e) => {
                   e.stopPropagation()
                   void shareInvite()
                 }}
                 aria-label="Share your invite code"
               >
-                <Share2 className="h-4 w-4" aria-hidden />
-                Share
+                <Share2 className="h-3.5 w-3.5" aria-hidden />
               </Button>
               <span className="shrink-0 text-muted-foreground" aria-hidden>
                 {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
@@ -289,7 +287,7 @@ export function PeopleScreen() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by display name…"
-            className="pl-9"
+            className="h-9 pl-9"
             aria-label="Search online people"
           />
         </div>
@@ -297,9 +295,9 @@ export function PeopleScreen() {
 
       {/* List */}
       {people.isLoading ? (
-        <div className="space-y-2.5" role="status" aria-label="Loading people">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[72px] w-full rounded-xl" />
+        <div className="grid grid-cols-4 gap-1.5" role="status" aria-label="Loading people">
+          {Array.from({ length: 20 }, (_, i) => (
+            <Skeleton key={i} className="h-[68px] w-full rounded-xl" />
           ))}
         </div>
       ) : people.isError ? (
@@ -338,60 +336,43 @@ export function PeopleScreen() {
           </CardContent>
         </Card>
       ) : (
-        <ul className="space-y-2.5" aria-label="People online now">
+        <ul className="grid grid-cols-4 gap-1.5 sm:gap-2" aria-label="People online now">
           {filtered.map((u) => (
             <li key={u.publicId}>
               <motion.div whileTap={{ scale: 0.97 }} transition={spring}>
-                <Card className="hover:border-primary/40 transition-colors">
-                  <CardContent className="p-3.5 flex items-center gap-3">
+                <Card className="relative h-[68px] overflow-hidden rounded-lg py-1.5 shadow-none hover:border-primary/40 transition-colors">
+                  <CardContent className="h-full px-1 py-0">
                     <button
-                      className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                      className="flex h-full w-full min-w-0 flex-col items-center justify-center gap-1 text-center"
                       onClick={() => openChat(u)}
                       disabled={openingId === u.publicId}
-                      aria-label={`Open chat with ${u.displayName}`}
+                      aria-label={`Open chat with ${u.displayName}, online now${u.conversationId ? ', existing conversation' : ''}`}
                     >
                       <UserAvatar
                         displayName={u.displayName}
                         publicId={u.publicId}
                         avatarUrl={u.avatarUrl}
                         online
-                        size={44}
+                        size={34}
                       />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{u.displayName}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
-                          Online now
-                        </p>
-                      </div>
-                      {u.conversationId && (
-                        <span className="shrink-0 text-muted-foreground" title="You already have a chat">
-                          <MessagesSquare className="h-4 w-4" aria-hidden />
-                          <span className="sr-only">Existing chat</span>
-                        </span>
-                      )}
+                      <span className="flex w-full min-w-0 items-center justify-center gap-1 text-[11px] font-medium leading-tight">
+                        <span className="truncate">{u.displayName}</span>
+                        {u.conversationId && (
+                          <MessagesSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+                        )}
+                      </span>
                     </button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="shrink-0 h-9 w-9"
+                      className="absolute right-0.5 top-0.5 h-6 w-6 rounded-full bg-background/80"
                       onClick={() => toggleFavorite(u)}
                       disabled={favBusyId === u.publicId}
                       aria-pressed={u.favorited}
                       aria-label={u.favorited ? `Remove ${u.displayName} from favourites` : `Favourite ${u.displayName}`}
                       title={u.favorited ? 'Favourited — pinned in Chats' : 'Favourite'}
                     >
-                      <Star className={cn('h-4.5 w-4.5', u.favorited && 'fill-amber-400 text-amber-400')} />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => openChat(u)}
-                      disabled={openingId === u.publicId}
-                      className="shrink-0"
-                    >
-                      <MessageCircle className="h-4 w-4 mr-1" aria-hidden />
-                      {u.conversationId ? 'Open' : 'Chat'}
+                      <Star className={cn('h-3.5 w-3.5', u.favorited && 'fill-amber-400 text-amber-400')} />
                     </Button>
                   </CardContent>
                 </Card>
@@ -402,7 +383,7 @@ export function PeopleScreen() {
       )}
 
       <Label className="sr-only" htmlFor="people-visible-inline">Show me in People</Label>
-      <p className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5 mt-auto">
+      <p className="hidden md:flex text-[11px] text-muted-foreground leading-relaxed gap-1.5 mt-auto">
         <Users className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
         <span>
           Everyone here is online right now — presence comes from the server, not the device. Tap a
