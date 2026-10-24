@@ -62,13 +62,16 @@ export function ChatsScreen() {
   const favCount = list.filter((c) => c.other?.favorited).length
 
   return (
-    <div className="flex-1 flex flex-col max-w-2xl w-full mx-auto p-4 gap-4">
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto p-4 sm:p-6 gap-5">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <MessagesSquare className="h-5 w-5 text-primary" aria-hidden /> Chats
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/15">
+              <MessagesSquare className="h-5 w-5" aria-hidden />
+            </span>
+            Chats
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground mt-1.5">
             Favourites stay pinned on top. Groups keep history until deleted.
           </p>
         </div>
@@ -131,7 +134,7 @@ export function ChatsScreen() {
           </CardContent>
         </Card>
       ) : (
-        <ul className="space-y-2" aria-label="Conversation list">
+        <ul className="space-y-2.5" aria-label="Conversation list">
           {favCount > 0 && (
             <li className="flex items-center gap-1.5 px-1 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground/80" aria-hidden>
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> Favourites
@@ -157,11 +160,11 @@ export function ChatsScreen() {
                 >
                   <Card
                     className={cn(
-                      'hover:border-primary/40 transition-colors',
-                      c.unreadCount > 0 && 'border-primary/50 bg-primary/[0.04]'
+                      'border-border/70 bg-card/70 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:bg-card hover:shadow-md active:translate-y-0 active:scale-[0.995]',
+                      c.unreadCount > 0 && 'border-primary/40 bg-primary/[0.055]'
                     )}
                   >
-                    <CardContent className="p-3.5 flex items-center gap-3">
+                    <CardContent className="p-3.5 sm:p-4 flex items-center gap-3.5">
                       {isGroup ? (
                         <div className="relative shrink-0">
                           <UserAvatar

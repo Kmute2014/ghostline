@@ -134,8 +134,8 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
   if (disabled) return null
 
   return (
-    <div className="shrink-0 border-t p-2.5 pb-[max(10px,env(safe-area-inset-bottom))] bg-background/90 backdrop-blur">
-      <div className="flex items-end gap-1.5">
+    <div className="shrink-0 border-t border-border/70 bg-background/90 p-2.5 pb-[max(10px,env(safe-area-inset-bottom))] backdrop-blur-xl">
+      <div className="mx-auto flex max-w-4xl items-end gap-1.5 sm:gap-2">
         <input
           ref={imageInputRef}
           type="file"
@@ -161,7 +161,7 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
         <Button
           variant="ghost"
           size="icon"
-          className="shrink-0"
+          className="h-10 w-10 shrink-0 rounded-xl text-muted-foreground hover:text-foreground sm:h-11 sm:w-11"
           onClick={() => imageInputRef.current?.click()}
           aria-label="Send photo"
         >
@@ -170,7 +170,7 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
         <Button
           variant="ghost"
           size="icon"
-          className="shrink-0"
+          className="h-10 w-10 shrink-0 rounded-xl text-muted-foreground hover:text-foreground sm:h-11 sm:w-11"
           onClick={() => videoInputRef.current?.click()}
           aria-label="Send video"
         >
@@ -190,7 +190,7 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
           rows={1}
           enterKeyHint="send"
           autoComplete="off"
-          className="min-h-[40px] max-h-32 resize-none py-2.5 overflow-y-auto field-sizing-fixed"
+          className="min-h-10 max-h-32 resize-none rounded-2xl border-border/70 bg-muted/50 px-4 py-2.5 overflow-y-auto field-sizing-fixed focus-visible:bg-background"
           maxLength={2000}
           aria-label="Message text"
         />
@@ -199,7 +199,7 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
           whileTap={reduced ? undefined : { scale: 0.88 }}
           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
         >
-          <Button size="icon" className="h-10 w-10" onClick={sendText} disabled={!text.trim() || sending} aria-label="Send message">
+          <Button size="icon" className="h-10 w-10 rounded-xl shadow-sm sm:h-11 sm:w-11" onClick={sendText} disabled={!text.trim() || sending} aria-label="Send message">
             <SendHorizontal className="h-4.5 w-4.5" />
           </Button>
         </motion.div>
@@ -218,6 +218,21 @@ type MessageBubbleProps = {
   reduced: boolean
   onLightbox: (m: MessageDTO) => void
   onRetry: (m: MessageDTO) => void
+}
+
+function DeliveryLabel({ createdAt }: { createdAt: string }) {
+  const [delayed, setDelayed] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDelayed(true), 5000)
+    return () => clearTimeout(timer)
+  }, [createdAt])
+
+  return (
+    <span role="status" aria-live="polite">
+      {delayed ? 'Still sending…' : 'Sending…'}
+    </span>
+  )
 }
 
 // Memoized bubble: with the composer isolated and these callbacks stable, a
@@ -294,7 +309,10 @@ const MessageBubble = memo(function MessageBubble({
                   <AlertCircle className="h-3 w-3 text-destructive" />
                 </button>
               ) : m.pending ? (
-                <Clock className="h-3 w-3 animate-pulse" aria-label="Sending" />
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3 w-3 animate-pulse" aria-hidden />
+                  <DeliveryLabel createdAt={m.createdAt} />
+                </span>
               ) : readByOther ? (
                 <CheckCheck className="h-3 w-3" aria-label="Read" />
               ) : (
@@ -329,6 +347,15 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   const pinnedRef = useRef(true) // list pinned to bottom until the user scrolls up
   const lastReadRef = useRef<number>(0)
   const lastKbOverlapRef = useRef(-1) // last rounded keyboard overlap written to --gl-kb
+  const mediaFileIdsRef = useRef(new Map<string, string>())
+  const mediaPreviewUrlsRef = useRef(new Map<string, string>())
+
+  useEffect(
+    () => () => {
+      for (const url of mediaPreviewUrlsRef.current.values()) URL.revokeObjectURL(url)
+    },
+    []
+  )
 
   const conversation = useQuery({
     queryKey: ['conversation', conversationId],
@@ -459,16 +486,38 @@ export function ChatView({ conversationId }: { conversationId: string }) {
     setPending((p) => p.map((m) => (m.clientId === clientId ? { ...m, ...patch } : m)))
   }, [])
 
+  const confirmOptimistic = useCallback(
+    (clientId: string) => {
+      markOptimistic(clientId, { pending: false, failed: false })
+      mediaFileIdsRef.current.delete(clientId)
+      const previewUrl = mediaPreviewUrlsRef.current.get(clientId)
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      mediaPreviewUrlsRef.current.delete(clientId)
+      void queryClient.invalidateQueries({ queryKey: ['messages', conversationId] }).then(() => {
+        const latest = queryClient.getQueryData<typeof messages.data>(['messages', conversationId])
+        if (latest?.pages.some((page) => page.messages.some((m) => m.clientId === clientId))) {
+          setPending((p) => p.filter((m) => m.clientId !== clientId))
+        }
+      })
+    },
+    [conversationId, markOptimistic, messages.data, queryClient]
+  )
+
   const sendViaHttp = useCallback(
     async (payload: { type: string; text?: string; fileId?: string | null }, clientId: string) => {
       try {
         await api.sendMessage(conversationId, { ...payload, clientId })
-        setPending((p) => p.filter((m) => m.clientId !== clientId))
-        queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
+        // Keep the optimistic bubble visible until the refreshed history
+        // contains the server copy; otherwise the message briefly disappears.
+        confirmOptimistic(clientId)
         queryClient.invalidateQueries({ queryKey: ['conversations'] })
       } catch (err) {
         if (err instanceof ApiClientError && (err.code === 'CONVERSATION_EXPIRED' || err.code === 'CONVERSATION_ENDED')) {
           setPending((p) => p.filter((m) => m.clientId !== clientId))
+          mediaFileIdsRef.current.delete(clientId)
+          const previewUrl = mediaPreviewUrlsRef.current.get(clientId)
+          if (previewUrl) URL.revokeObjectURL(previewUrl)
+          mediaPreviewUrlsRef.current.delete(clientId)
           toast.error(err.message)
           queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
         } else {
@@ -476,7 +525,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         }
       }
     },
-    [conversationId, markOptimistic, queryClient]
+    [confirmOptimistic, conversationId, markOptimistic, queryClient]
   )
 
   const sendViaSocket = useCallback(
@@ -491,11 +540,16 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         { conversationId, clientId, type: payload.type, text: payload.text, fileId: payload.fileId ?? undefined },
         (ack: { ok?: boolean; message?: MessageDTO; error?: string }) => {
           if (ack?.ok && ack.message) {
-            setPending((p) => p.filter((m) => m.clientId !== clientId))
-            queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
+            // The local copy bridges the ack-to-query-refetch gap and is
+            // deduplicated as soon as history returns this clientId.
+            confirmOptimistic(clientId)
             queryClient.invalidateQueries({ queryKey: ['conversations'] })
           } else if (ack?.error === 'conversation_expired' || ack?.error === 'not_participant') {
             setPending((p) => p.filter((m) => m.clientId !== clientId))
+            mediaFileIdsRef.current.delete(clientId)
+            const previewUrl = mediaPreviewUrlsRef.current.get(clientId)
+            if (previewUrl) URL.revokeObjectURL(previewUrl)
+            mediaPreviewUrlsRef.current.delete(clientId)
             toast.error('This conversation is closed and cannot accept messages.')
             queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
             queryClient.invalidateQueries({ queryKey: ['conversations'] })
@@ -505,7 +559,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         }
       )
     },
-    [conversationId, markOptimistic, queryClient, sendViaHttp]
+    [confirmOptimistic, conversationId, markOptimistic, queryClient, sendViaHttp]
   )
 
   // The text arrives fully trimmed from ChatComposer (which also owns the
@@ -539,22 +593,29 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         return
       }
       const clientId = crypto.randomUUID()
+      const previewUrl = URL.createObjectURL(file)
+      mediaPreviewUrlsRef.current.set(clientId, previewUrl)
       optimisticAppend({
         id: clientId,
         conversationId,
         senderPublicId: 'me',
         type: kind,
         text: null,
-        mediaUrl: URL.createObjectURL(file),
+        mediaUrl: previewUrl,
         createdAt: new Date().toISOString(),
         clientId,
         pending: true,
       })
       try {
         const up = await api.upload(file, kind)
+        mediaFileIdsRef.current.set(clientId, up.id)
         sendViaSocket({ type: kind, fileId: up.id }, clientId)
       } catch (err) {
         setPending((p) => p.filter((m) => m.clientId !== clientId))
+        mediaFileIdsRef.current.delete(clientId)
+        const previewUrl = mediaPreviewUrlsRef.current.get(clientId)
+        if (previewUrl) URL.revokeObjectURL(previewUrl)
+        mediaPreviewUrlsRef.current.delete(clientId)
         toast.error(err instanceof ApiClientError ? err.message : 'Upload failed.')
       }
     },
@@ -563,9 +624,21 @@ export function ChatView({ conversationId }: { conversationId: string }) {
 
   const retryMessage = useCallback(
     (m: MessageDTO) => {
-      setPending((p) => p.filter((x) => x.clientId !== m.clientId))
+      const clientId = m.clientId ?? crypto.randomUUID()
+      const fileId = mediaFileIdsRef.current.get(clientId)
+      if (m.type !== 'text' && !fileId) {
+        toast.error('This attachment is no longer available to retry. Please select it again.')
+        return
+      }
+      setPending((p) =>
+        p.map((x) =>
+          x.id === m.id ? { ...x, clientId, pending: true, failed: false } : x
+        )
+      )
       if (m.type === 'text') {
-        sendViaSocket({ type: 'text', text: m.text ?? '' }, m.clientId ?? crypto.randomUUID())
+        sendViaSocket({ type: 'text', text: m.text ?? '' }, clientId)
+      } else {
+        sendViaSocket({ type: m.type, fileId }, clientId)
       }
     },
     [sendViaSocket]
@@ -769,9 +842,9 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   const someoneTyping = typingState && Date.now() - typingState.at < 4000
 
   return (
-    <div className="gl-chat-viewport flex flex-col max-w-2xl w-full mx-auto">
+    <div className="gl-chat-viewport flex flex-col max-w-5xl w-full mx-auto">
       {/* Header */}
-      <div className="h-14 shrink-0 border-b flex items-center gap-2.5 px-3 bg-background/90 backdrop-blur">
+      <div className="h-16 shrink-0 border-b flex items-center gap-2.5 px-2.5 sm:px-4 bg-background/85 backdrop-blur-xl">
         <Button variant="ghost" size="icon" onClick={() => setTab('chats')} aria-label="Back to chats">
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -845,7 +918,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} onScroll={markScrollPinned} className="flex-1 overflow-y-auto ghostline-scroll touch-scroll overscroll-contain px-3 py-4 space-y-1.5">
+      <div ref={scrollRef} onScroll={markScrollPinned}       className="flex-1 overflow-y-auto ghostline-scroll touch-scroll overscroll-contain px-3 py-4 sm:px-6 sm:py-6 space-y-1.5">
         {messages.hasNextPage && !messages.isFetchingPreviousPage && (
           <div className="flex justify-center pb-2">
             <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => messages.fetchPreviousPage()}>

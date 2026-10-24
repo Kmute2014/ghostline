@@ -121,7 +121,21 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "ss01";
+    background-image:
+      radial-gradient(70rem 38rem at 50% -20%, color-mix(in oklab, var(--primary) 10%, transparent), transparent 68%),
+      linear-gradient(180deg, color-mix(in oklab, var(--background) 96%, white 4%), var(--background));
+    background-attachment: fixed;
   }
+}
+
+::selection {
+  color: var(--primary-foreground);
+  background: color-mix(in oklab, var(--primary) 72%, transparent);
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
 }
 
 /* Subtle custom scrollbar for chat/lists */
@@ -164,7 +178,10 @@
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 html { height: -webkit-fill-available; }
 body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
-.app-shell { min-height: 100dvh; }
+.app-shell {
+  min-height: 100dvh;
+  isolation: isolate;
+}
 .no-select { -webkit-user-select: none; user-select: none; }
 .touch-scroll { -webkit-overflow-scrolling: touch; }
 
@@ -190,6 +207,10 @@ body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
 :root { --gl-kb: 0px; }
 .gl-chat-viewport {
   height: calc(100dvh - var(--gl-header-h, 3.5rem) - var(--gl-kb, 0px));
+  max-width: 80rem;
+  border-inline: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+  background: color-mix(in oklab, var(--background) 82%, transparent);
+  box-shadow: 0 24px 80px -64px color-mix(in oklab, var(--primary) 35%, transparent);
 }
 @media (min-width: 768px) {
   .gl-chat-viewport {
@@ -197,4 +218,20 @@ body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
   }
 }
 
-/* recompile trigger */
+@media (max-width: 767px) {
+  .gl-chat-viewport {
+    border-inline: 0;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

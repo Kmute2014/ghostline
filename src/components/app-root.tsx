@@ -230,19 +230,29 @@ export function AppRoot() {
   return (
     <div className="app-shell flex flex-col">
       {/* Top bar (app-header grows by the safe-area inset when installed) */}
-      <header className="app-header sticky top-0 z-30 h-14 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 flex items-center gap-3 px-4">
-        <div className="flex items-center gap-2">
-          <Ghost className="h-6 w-6 text-primary" aria-hidden />
-          <span className="font-bold tracking-tight">Ghostline</span>
+      <header className="app-header sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/70 bg-background/80 px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/12 ring-1 ring-primary/15">
+            <Ghost className="h-5 w-5 text-primary" aria-hidden />
+          </span>
+          <span className="font-semibold tracking-tight">Ghostline</span>
         </div>
-        <span
+        <div
           title={socketConnected ? 'Realtime connected' : 'Realtime offline — retrying'}
-          className={cn(
-            'ml-auto h-2 w-2 rounded-full',
-            socketConnected ? 'bg-emerald-400 signal-dot' : 'bg-amber-500'
-          )}
-          aria-label={socketConnected ? 'Connected' : 'Reconnecting'}
-        />
+          role="status"
+          className="ml-auto flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-2.5 py-1.5"
+        >
+          <span
+            className={cn(
+              'h-1.5 w-1.5 rounded-full',
+              socketConnected ? 'bg-emerald-400 signal-dot' : 'bg-amber-500'
+            )}
+            aria-hidden
+          />
+          <span className="text-[11px] font-medium text-muted-foreground">
+            {socketConnected ? 'Live' : 'Reconnecting'}
+          </span>
+        </div>
       </header>
 
       <div className="flex flex-1 w-full">
