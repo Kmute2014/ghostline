@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 
-const HUES = [165, 35, 215, 345, 105, 185]
+const HUES = [215, 35, 255, 345, 230, 195]
 
 function hashHue(seed: string): number {
   let h = 0
