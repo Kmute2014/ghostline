@@ -6,8 +6,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#1b1e41",
-  "theme_color": "#1b1e41",
+  "background_color": "#f5fbfa",
+  "theme_color": "#f5fbfa",
   "lang": "en",
   "categories": ["social", "communication"],
   "icons": [

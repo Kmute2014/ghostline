@@ -44,7 +44,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Ghostline: inky blue with bright mint and warm, multicolor accents. */
+/* Ghostline: light blue-led surfaces with warm, playful secondary accents. */
 :root {
   --radius: 1rem;
   --background: oklch(0.16 0.025 248);
@@ -53,8 +53,8 @@
   --card-foreground: oklch(0.96 0.01 220);
   --popover: oklch(0.19 0.03 248);
   --popover-foreground: oklch(0.96 0.01 220);
-  --primary: oklch(0.81 0.16 165);
-  --primary-foreground: oklch(0.19 0.035 205);
+  --primary: oklch(0.58 0.22 258);
+  --primary-foreground: oklch(0.99 0.005 250);
   --secondary: oklch(0.255 0.035 242);
   --secondary-foreground: oklch(0.95 0.01 220);
   --muted: oklch(0.235 0.03 242);
@@ -65,24 +65,24 @@
   --destructive-foreground: oklch(0.98 0.01 25);
   --border: oklch(0.32 0.035 242);
   --input: oklch(0.28 0.03 242);
-  --ring: oklch(0.81 0.16 165);
-  --glow: oklch(0.81 0.16 165 / 0.38);
-  --chart-1: oklch(0.81 0.16 165);
+  --ring: oklch(0.58 0.22 258);
+  --glow: oklch(0.58 0.22 258 / 0.32);
+  --chart-1: oklch(0.58 0.22 258);
   --chart-2: oklch(0.74 0.17 45);
   --chart-3: oklch(0.76 0.16 225);
   --chart-4: oklch(0.72 0.19 345);
   --chart-5: oklch(0.83 0.17 105);
   --sidebar: oklch(0.14 0.022 248);
   --sidebar-foreground: oklch(0.96 0.01 220);
-  --sidebar-primary: oklch(0.81 0.16 165);
-  --sidebar-primary-foreground: oklch(0.19 0.035 205);
+  --sidebar-primary: oklch(0.58 0.22 258);
+  --sidebar-primary-foreground: oklch(0.99 0.005 250);
   --sidebar-accent: oklch(0.24 0.035 242);
   --sidebar-accent-foreground: oklch(0.96 0.01 220);
   --sidebar-border: oklch(0.29 0.03 242);
-  --sidebar-ring: oklch(0.81 0.16 165);
+  --sidebar-ring: oklch(0.58 0.22 258);
 }
 
-/* Optional light theme. */
+/* Light is the product default: soft cool neutrals with a confident blue signal. */
 .light {
   --background: oklch(0.975 0.012 205);
   --foreground: oklch(0.19 0.03 245);
@@ -90,8 +90,8 @@
   --card-foreground: oklch(0.19 0.03 245);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.19 0.03 245);
-  --primary: oklch(0.55 0.14 175);
-  --primary-foreground: oklch(0.99 0.01 190);
+  --primary: oklch(0.55 0.22 258);
+  --primary-foreground: oklch(0.99 0.005 250);
   --secondary: oklch(0.94 0.02 215);
   --secondary-foreground: oklch(0.22 0.03 245);
   --muted: oklch(0.95 0.015 215);
@@ -102,16 +102,17 @@
   --destructive-foreground: oklch(0.99 0.01 25);
   --border: oklch(0.89 0.025 220);
   --input: oklch(0.89 0.025 220);
-  --ring: oklch(0.55 0.14 175);
-  --glow: oklch(0.55 0.14 175 / 0.25);
+  --ring: oklch(0.55 0.22 258);
+  --glow: oklch(0.55 0.22 258 / 0.24);
   --sidebar: oklch(0.96 0.018 210);
   --sidebar-foreground: oklch(0.19 0.03 245);
-  --sidebar-primary: oklch(0.55 0.14 175);
-  --sidebar-primary-foreground: oklch(0.99 0.01 190);
+  --sidebar-primary: oklch(0.55 0.22 258);
+  --sidebar-primary-foreground: oklch(0.99 0.005 250);
   --sidebar-accent: oklch(0.92 0.025 215);
   --sidebar-accent-foreground: oklch(0.22 0.03 245);
   --sidebar-border: oklch(0.89 0.025 220);
-  --sidebar-ring: oklch(0.55 0.14 175);
+  --sidebar-ring: oklch(0.55 0.22 258);
+  color-scheme: light;
 }
 
 @layer base {
@@ -200,7 +201,7 @@ body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
   isolation: isolate;
 }
 .brand-mark {
-  background: linear-gradient(140deg, var(--primary) 5%, oklch(0.76 0.17 45) 58%, oklch(0.72 0.19 345));
+  background: linear-gradient(140deg, oklch(0.62 0.22 258) 5%, oklch(0.72 0.17 45) 58%, oklch(0.72 0.19 345));
 }
 .onboarding-stage {
   background:
