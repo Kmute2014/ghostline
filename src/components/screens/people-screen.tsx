@@ -158,7 +158,7 @@ export function PeopleScreen() {
           <p className="text-[11px] text-muted-foreground mt-0.5" aria-live="polite">
             {people.isLoading
               ? 'Checking who is around…'
-              : `${users.length} ${users.length === 1 ? 'person' : 'people'} online right now — say hi to anyone.`}
+              : `${users.length} ${users.length === 1 ? 'person' : 'people'} online right now — say hi to anyone ✨`}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

@@ -37,8 +37,8 @@ export function BottomNav({ unread }: { unread: number }) {
               whileTap={reduced ? undefined : { scale: 0.82 }}
               transition={TAP_SPRING}
               className={cn(
-                'relative flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors min-h-[56px] touch-manipulation',
-                active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                'relative flex flex-col items-center justify-center gap-0.5 rounded-xl py-2.5 text-[10px] font-medium transition-colors min-h-[56px] touch-manipulation',
+                active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <motion.span

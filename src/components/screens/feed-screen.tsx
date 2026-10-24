@@ -183,7 +183,7 @@ export function FeedScreen() {
             <Zap className="h-5 w-5 text-primary" aria-hidden /> Buzz
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            What&apos;s on your mind? Text only — everyone can vote &amp; comment.
+            What&apos;s on your mind? Drop a thought, vote &amp; comment ✍️
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

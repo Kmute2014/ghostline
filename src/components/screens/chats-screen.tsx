@@ -72,7 +72,7 @@ export function ChatsScreen() {
             Chats
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5">
-            Favourites stay pinned on top. Groups keep history until deleted.
+            Your people, your conversations. Favourites stay close 💬
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

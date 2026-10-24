@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion'
 import { Ghost, WifiOff } from 'lucide-react'
@@ -94,6 +94,55 @@ export function AppRoot() {
   // overrides the back.
   const chatOpen = Boolean(activeConversationId)
   const suppressPopRef = useRef(false)
+  const previousTabsRef = useRef<Tab[]>([])
+  const lastTabRef = useRef(tab)
+  const edgeTouchRef = useRef<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (lastTabRef.current === tab) return
+    previousTabsRef.current.push(lastTabRef.current)
+    if (previousTabsRef.current.length > 20) previousTabsRef.current.shift()
+    lastTabRef.current = tab
+  }, [tab])
+
+  const handleEdgeTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (!window.matchMedia('(max-width: 767px)').matches) return
+    if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return
+    const touch = event.changedTouches[0]
+    if (!touch || touch.clientX > 28) return
+    const target = event.target
+    if (
+      target instanceof HTMLElement &&
+      target.closest('input, textarea, select, video, [contenteditable="true"], [role="slider"]')
+    ) {
+      return
+    }
+    edgeTouchRef.current = { x: touch.clientX, y: touch.clientY }
+  }
+
+  const handleEdgeTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const start = edgeTouchRef.current
+    edgeTouchRef.current = null
+    const touch = event.changedTouches[0]
+    if (!start || !touch) return
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    if (deltaX < 76 || Math.abs(deltaY) > 64) return
+
+    if (chatOpen) {
+      closeConversation()
+      return
+    }
+
+    const history = previousTabsRef.current
+    let previousTab = history.pop()
+    while (previousTab === tab && history.length > 0) previousTab = history.pop()
+    if (!previousTab || previousTab === tab) {
+      previousTab = TAB_ORDER[(TAB_ORDER.indexOf(tab) - 1 + TAB_ORDER.length) % TAB_ORDER.length]
+    }
+    useAppStore.getState().setTab(previousTab)
+  }
+
   useEffect(() => {
     if (chatOpen) {
       suppressPopRef.current = false
@@ -228,14 +277,22 @@ export function AppRoot() {
   }
 
   return (
-    <div className="app-shell flex flex-col">
+    <div
+      className="app-shell flex flex-col"
+      onTouchStart={handleEdgeTouchStart}
+      onTouchEnd={handleEdgeTouchEnd}
+      onTouchCancel={() => {
+        edgeTouchRef.current = null
+      }}
+    >
       {/* Top bar (app-header grows by the safe-area inset when installed) */}
       <header className="app-header sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/70 bg-background/80 px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/12 ring-1 ring-primary/15">
+          <span className="brand-mark flex h-8 w-8 items-center justify-center rounded-xl ring-1 ring-white/15">
             <Ghost className="h-5 w-5 text-primary" aria-hidden />
           </span>
           <span className="font-semibold tracking-tight">Ghostline</span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">your people, your planet ✨</span>
         </div>
         <div
           title={socketConnected ? 'Realtime connected' : 'Realtime offline — retrying'}

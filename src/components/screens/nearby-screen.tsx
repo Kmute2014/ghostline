@@ -192,7 +192,7 @@ export function NearbyScreen() {
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {profile?.nearbyVisible
-              ? 'Visible on Nearby · you can pause anytime'
+              ? 'Visible on Nearby · you can pause anytime ✨'
               : 'Discovery is off — you are invisible'}
           </p>
         </div>
@@ -210,7 +210,7 @@ export function NearbyScreen() {
           <CardContent className="p-6 text-center space-y-4">
             <MapPinOff className="h-10 w-10 mx-auto text-muted-foreground" aria-hidden />
             <div className="space-y-1.5">
-              <h2 className="font-semibold">Find people around you</h2>
+              <h2 className="font-semibold">Find your people nearby 🌍</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Ghostline will ask for your location only now. Others see an <strong>approximate distance</strong> —
                 never your coordinates — and only while you stay visible. Turning discovery off deletes your

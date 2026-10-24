@@ -54,7 +54,7 @@ export function StoriesScreen() {
         <div className="min-w-0">
           <h1 className="text-lg font-semibold tracking-tight">Stories</h1>
           <p className="text-xs text-muted-foreground">
-            Moments that vanish 24 hours after being shared.
+            Little moments, big energy — gone in 24 hours ✨
           </p>
         </div>
         <Button onClick={() => setComposerOpen(true)} className="min-h-[44px] shrink-0">

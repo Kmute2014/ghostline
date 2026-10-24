@@ -58,7 +58,7 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
   }
 
   return (
-    <div className="app-shell flex flex-col items-center justify-center p-4 bg-[radial-gradient(60rem_40rem_at_50%_-10%,oklch(0.30_0.09_295/0.5),transparent)]">
+    <div className="app-shell onboarding-stage flex flex-col items-center justify-center p-4">
       <motion.main
         className="w-full max-w-md space-y-6"
         initial={reduced ? { opacity: 0 } : { opacity: 0, y: 16 }}
@@ -66,10 +66,11 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
         transition={{ type: 'spring', stiffness: 400, damping: 38, mass: 0.9 }}
       >
         <div className="text-center space-y-3">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/15 border border-primary/30 flex items-center justify-center">
-            <Ghost className="h-9 w-9 text-primary" aria-hidden />
+          <div className="brand-mark mx-auto w-16 h-16 rounded-2xl ring-1 ring-white/20 flex items-center justify-center shadow-lg shadow-primary/10">
+            <Ghost className="h-9 w-9 text-[#101923]" aria-hidden />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Ghostline</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Ghostline <span aria-hidden>👻</span></h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Your corner of the internet ✨</p>
           <p className="text-muted-foreground text-sm leading-relaxed">
             See everyone who's online and start chatting instantly, find people nearby, share
             24-hour stories and connect with invite codes — all without a phone number, email or
