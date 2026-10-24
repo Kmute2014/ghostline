@@ -140,15 +140,20 @@ export async function createAnonymousIdentity(displayName: string) {
 
     try {
       return await db.$transaction(async (tx) => {
-        // Keep concurrent identity creations from selecting the same display name.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(0, 1196576844)`
+        // Serialize identity creation to avoid concurrent display-name conflicts.
+        // The transaction-level advisory lock remains held until this transaction ends.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(0, 1196576844)`
 
         let availableDisplayName = displayName
         let suffix = 2
+
         while (
           await tx.profile.findFirst({
             where: {
-              displayName: { equals: availableDisplayName, mode: 'insensitive' },
+              displayName: {
+                equals: availableDisplayName,
+                mode: 'insensitive',
+              },
             },
             select: { id: true },
           })
@@ -177,20 +182,18 @@ export async function createAnonymousIdentity(displayName: string) {
 
       if (isUniqueConstraintError && attempt < 4) {
         console.warn(
-          `[session] Unique constraint conflict creating identity; retrying (${attempt + 1}/5).`
+          `[session] Unique constraint conflict creating identity; retrying (${attempt + 1}/5).`,
         )
         continue
       }
 
-      // Log the real error on the server so the underlying issue can be diagnosed.
       console.error('[session] Failed to create anonymous identity:', error)
-
       throw error
     }
   }
 
   throw new Error(
-    'Could not create identity after repeated unique-constraint conflicts.'
+    'Could not create identity after repeated unique-constraint conflicts.',
   )
 }
 
