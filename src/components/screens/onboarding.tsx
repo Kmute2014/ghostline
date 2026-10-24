@@ -100,7 +100,9 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
                     placeholder="Ghost-1234"
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">You can change this anytime.</p>
+                  <p className="text-xs text-muted-foreground">
+                    You can change this anytime. If the name is already in use, we’ll add a number to make yours unique.
+                  </p>
                 </div>
 
                 <motion.ul

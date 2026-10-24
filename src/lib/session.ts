@@ -139,18 +139,35 @@ export async function createAnonymousIdentity(displayName: string) {
     const recoveryCode = generateRecoveryCode()
 
     try {
-      const profile = await db.profile.create({
-        data: {
-          publicId,
-          displayName,
-          inviteCode,
-          recoveryCode,
-          presence: { create: {} },
-        },
-      })
+      return await db.$transaction(async (tx) => {
+        // Keep concurrent identity creations from selecting the same display name.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(0, 1196576844)`
 
-      // Return the created profile. Avoid an unnecessary second database query.
-      return profile
+        let availableDisplayName = displayName
+        let suffix = 2
+        while (
+          await tx.profile.findFirst({
+            where: {
+              displayName: { equals: availableDisplayName, mode: 'insensitive' },
+            },
+            select: { id: true },
+          })
+        ) {
+          const ending = `-${suffix}`
+          availableDisplayName = `${displayName.slice(0, 24 - ending.length).trimEnd()}${ending}`
+          suffix++
+        }
+
+        return tx.profile.create({
+          data: {
+            publicId,
+            displayName: availableDisplayName,
+            inviteCode,
+            recoveryCode,
+            presence: { create: {} },
+          },
+        })
+      })
     } catch (error: unknown) {
       const isUniqueConstraintError =
         typeof error === 'object' &&
