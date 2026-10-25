@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { motion, type Transition } from 'framer-motion'
+import { motion, useReducedMotion, type Transition } from 'framer-motion'
 import {
   Users,
   Search,
@@ -15,6 +15,7 @@ import {
   Share2,
   Copy,
   Check,
+  Loader2,
 } from 'lucide-react'
 import { api, ApiClientError } from '@/lib/client-api'
 import { useAppStore } from '@/store/app-store'
@@ -38,6 +39,7 @@ const spring: Transition = { type: 'spring', stiffness: 400, damping: 34 }
  * instantly. Existing conversations re-open instead of duplicating.
  */
 export function PeopleScreen() {
+  const reducedMotion = useReducedMotion()
   const queryClient = useQueryClient()
   const profile = useAppStore((s) => s.profile)
   const setProfile = useAppStore((s) => s.setProfile)
@@ -302,36 +304,71 @@ export function PeopleScreen() {
         </Card>
       ) : (
         <ul className="grid grid-cols-4 gap-1.5 sm:gap-2" aria-label="People online now">
-          {filtered.map((u) => (
-            <li key={u.publicId}>
-              <motion.div whileTap={{ scale: 0.97 }} transition={spring}>
-                <Card className="relative h-[68px] overflow-hidden rounded-lg py-1.5 shadow-none hover:border-primary/40 transition-colors">
-                  <CardContent className="h-full px-1 py-0">
-                    <button
-                      className="flex h-full w-full min-w-0 touch-manipulation flex-col items-center justify-center gap-1 text-center"
-                      onClick={() => openChat(u)}
-                      disabled={openingId === u.publicId}
-                      aria-label={`Open chat with ${u.displayName}, online now${u.conversationId ? ', existing conversation' : ''}`}
-                    >
-                      <UserAvatar
-                        displayName={u.displayName}
-                        publicId={u.publicId}
-                        avatarUrl={u.avatarUrl}
-                        online
-                        size={34}
-                      />
-                      <span className="flex w-full min-w-0 items-center justify-center gap-1 text-[11px] font-medium leading-tight">
-                        <span className="truncate">{u.displayName}</span>
-                        {u.conversationId && (
-                          <MessagesSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-                        )}
-                      </span>
-                    </button>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </li>
-          ))}
+          {filtered.map((u) => {
+            const isOpening = openingId === u.publicId
+            return (
+              <li key={u.publicId}>
+                <motion.div
+                  animate={{
+                    scale: isOpening && !reducedMotion ? 1.02 : 1,
+                    y: isOpening && !reducedMotion ? -2 : 0,
+                  }}
+                  whileTap={reducedMotion ? undefined : { scale: 0.94 }}
+                  transition={spring}
+                  className="relative"
+                >
+                  <Card
+                    className={cn(
+                      'relative h-[68px] overflow-hidden rounded-lg py-1.5 shadow-none transition-[border-color,background-color,box-shadow]',
+                      isOpening
+                        ? 'border-primary/70 bg-primary/10 shadow-md shadow-primary/15'
+                        : 'hover:border-primary/40'
+                    )}
+                  >
+                    <motion.span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 z-10 rounded-lg border-2 border-primary"
+                      animate={
+                        isOpening && !reducedMotion
+                          ? { opacity: [0, 0.65, 0], scale: [0.96, 1.02, 1.08] }
+                          : { opacity: isOpening ? 0.3 : 0, scale: 1 }
+                      }
+                      transition={
+                        isOpening && !reducedMotion
+                          ? { duration: 0.9, repeat: Infinity, ease: 'easeOut' }
+                          : { duration: 0.16 }
+                      }
+                    />
+                    <CardContent className="h-full px-1 py-0">
+                      <button
+                        className="flex h-full w-full min-w-0 touch-manipulation flex-col items-center justify-center gap-1 text-center"
+                        onClick={() => openChat(u)}
+                        disabled={isOpening}
+                        aria-busy={isOpening}
+                        aria-label={`Open chat with ${u.displayName}, online now${u.conversationId ? ', existing conversation' : ''}`}
+                      >
+                        <UserAvatar
+                          displayName={u.displayName}
+                          publicId={u.publicId}
+                          avatarUrl={u.avatarUrl}
+                          online
+                          size={34}
+                        />
+                        <span className="flex w-full min-w-0 items-center justify-center gap-1 text-[11px] font-medium leading-tight">
+                          <span className="truncate">{u.displayName}</span>
+                          {isOpening ? (
+                            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" aria-hidden />
+                          ) : u.conversationId ? (
+                            <MessagesSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+                          ) : null}
+                        </span>
+                      </button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </li>
+            )
+          })}
         </ul>
       )}
 
