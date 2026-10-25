@@ -272,6 +272,9 @@ async function setOnline(userId: string, online: boolean) {
   const now = new Date()
   // Upsert — a session can outlive its Presence row (sweeps / manual cleanup);
   // update-only would P2025 and the user would never show as online.
+  const previous = online
+    ? await db.presence.findUnique({ where: { userId }, select: { isOnline: true } })
+    : null
   const presence = await db.presence.upsert({
     where: { userId },
     create: online
@@ -280,11 +283,47 @@ async function setOnline(userId: string, online: boolean) {
     update: online
       ? { isOnline: true, lastHeartbeatAt: now, lastSeenAt: now }
       : { isOnline: false, lastSeenAt: now },
-    include: { user: { select: { publicId: true } } },
+    include: { user: { select: { publicId: true, displayName: true, showInPeople: true } } },
   }).catch(() => null)
   if (presence) {
     await emitPresence(presence.user.publicId, online, presence.lastSeenAt.toISOString())
+    if (online && !previous?.isOnline && presence.user.showInPeople) {
+      void notifyPeopleOnline(userId, presence.user.publicId, presence.user.displayName).catch((err) => {
+        console.error('[push] online notification failed:', err)
+      })
+    }
   }
+}
+
+/** Notify opted-in users when someone appears in the People directory. */
+async function notifyPeopleOnline(userId: string, publicId: string, displayName: string) {
+  const recipients = await db.profile.findMany({
+    where: {
+      id: { not: userId },
+      notifyWhenPeopleOnline: true,
+      pushSubscriptions: { some: {} },
+      OR: [
+        { onlineNotificationAudience: 'anyone' },
+        {
+          onlineNotificationAudience: 'friends',
+          contactsOwned: { some: { contactId: userId } },
+        },
+      ],
+      blocksReceived: { none: { blockerId: userId } },
+      blocksMade: { none: { blockedId: userId } },
+    },
+    select: { id: true },
+  })
+  await Promise.all(
+    recipients.map((recipient) =>
+      sendPushToUser(recipient.id, {
+        title: 'Someone is online',
+        body: `${displayName} is now online.`,
+        tag: `online-${publicId}`,
+        url: '/',
+      })
+    )
+  )
 }
 
 /**

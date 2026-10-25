@@ -46,6 +46,8 @@ export function toOwnProfile(
     avatarFileId: string | null
     nearbyVisible: boolean
     showInPeople: boolean
+    notifyWhenPeopleOnline: boolean
+    onlineNotificationAudience: string
     defaultStoryAudience: string
     inviteCode: string
     recoveryCode: string
@@ -60,6 +62,9 @@ export function toOwnProfile(
     avatarUrl: avatarUrlFor(profile.avatarFileId),
     nearbyVisible: profile.nearbyVisible,
     showInPeople: profile.showInPeople,
+    notifyWhenPeopleOnline: profile.notifyWhenPeopleOnline,
+    onlineNotificationAudience:
+      profile.onlineNotificationAudience === 'friends' ? 'friends' : 'anyone',
     defaultStoryAudience: profile.defaultStoryAudience === 'friends' ? 'friends' : 'public',
     inviteCode: profile.inviteCode,
     recoveryCode: profile.recoveryCode,

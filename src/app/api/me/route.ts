@@ -60,6 +60,17 @@ export const PATCH = handle(async (req: NextRequest) => {
     data.showInPeople = Boolean(body.showInPeople)
   }
 
+  if (body.notifyWhenPeopleOnline !== undefined) {
+    data.notifyWhenPeopleOnline = Boolean(body.notifyWhenPeopleOnline)
+  }
+
+  if (body.onlineNotificationAudience !== undefined) {
+    if (body.onlineNotificationAudience !== 'anyone' && body.onlineNotificationAudience !== 'friends') {
+      throw badRequest('Choose anyone or friends for online notifications.', 'INVALID_ONLINE_NOTIFICATION_AUDIENCE')
+    }
+    data.onlineNotificationAudience = body.onlineNotificationAudience
+  }
+
   if (body.defaultStoryAudience !== undefined) {
     const v = body.defaultStoryAudience === 'friends' ? 'friends' : 'public'
     data.defaultStoryAudience = v

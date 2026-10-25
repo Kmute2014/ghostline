@@ -35,6 +35,8 @@ export type OwnProfile = {
   avatarUrl: string | null
   nearbyVisible: boolean
   showInPeople: boolean
+  notifyWhenPeopleOnline: boolean
+  onlineNotificationAudience: 'anyone' | 'friends'
   defaultStoryAudience: 'public' | 'friends'
   inviteCode: string
   recoveryCode: string

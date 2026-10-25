@@ -1,12 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bell, BellOff, BellRing, Loader2, SendHorizontal, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Bell, BellOff, BellRing, Loader2, SendHorizontal, ShieldCheck, TriangleAlert, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client-api'
+import type { OwnProfile } from '@/lib/types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   disablePush,
   enablePush,
@@ -103,10 +113,10 @@ export function NotificationsCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Bell className="h-4 w-4 text-primary" aria-hidden /> Notifications
+          <Bell className="h-4 w-4 text-primary" aria-hidden /> Chat notifications
         </CardTitle>
         <CardDescription>
-          Get a pop-up when someone messages you — even when Hushly is closed.
+          Get a pop-up for new chats and messages — even when Hushly is closed.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -203,6 +213,93 @@ export function NotificationsCard() {
 
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           Notifications are delivered per device. Turning them off here only affects this browser.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function OnlineNotificationsCard({
+  profile,
+  applyProfile,
+}: {
+  profile: OwnProfile
+  applyProfile: (profile: OwnProfile) => void
+}) {
+  const [busy, setBusy] = useState(false)
+
+  async function handleChange(enabled: boolean) {
+    setBusy(true)
+    try {
+      const updated = await api.updateMe({ notifyWhenPeopleOnline: enabled })
+      applyProfile(updated)
+      toast.success(enabled ? 'Online notifications enabled.' : 'Online notifications turned off.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update online notifications.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleAudienceChange(value: 'anyone' | 'friends') {
+    setBusy(true)
+    try {
+      const updated = await api.updateMe({ onlineNotificationAudience: value })
+      applyProfile(updated)
+      toast.success(value === 'anyone' ? 'You will be notified about anyone.' : 'You will be notified about friends.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update the notification audience.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-primary" aria-hidden /> People coming online
+        </CardTitle>
+        <CardDescription>
+          Get a push notification when someone visible in People comes online.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="online-notifications" className="text-sm font-medium">
+            Notify me when people come online
+          </Label>
+          <Switch
+            id="online-notifications"
+            checked={profile.notifyWhenPeopleOnline}
+            disabled={busy}
+            onCheckedChange={(enabled) => void handleChange(enabled)}
+            aria-label="Notify me when people come online"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="online-notification-audience" className="text-sm font-medium">
+            Notify me about
+          </Label>
+          <Select
+            value={profile.onlineNotificationAudience}
+            disabled={busy}
+            onValueChange={(value) => {
+              if (value === 'anyone' || value === 'friends') void handleAudienceChange(value)
+            }}
+          >
+            <SelectTrigger id="online-notification-audience" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="anyone">Anyone</SelectItem>
+              <SelectItem value="friends">Friends</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Friends are people you have saved as contacts. This is separate from chat notifications.
+          Push notifications must be enabled on a device to receive alerts.
         </p>
       </CardContent>
     </Card>

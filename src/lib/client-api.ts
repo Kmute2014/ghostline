@@ -94,7 +94,15 @@ export const api = {
 
   updateMe: (
     patch: Partial<
-      Pick<OwnProfile, 'displayName' | 'nearbyVisible' | 'showInPeople' | 'defaultStoryAudience'> & {
+      Pick<
+        OwnProfile,
+        | 'displayName'
+        | 'nearbyVisible'
+        | 'showInPeople'
+        | 'notifyWhenPeopleOnline'
+        | 'onlineNotificationAudience'
+        | 'defaultStoryAudience'
+      > & {
         avatarFileId: string | null
       }
     >

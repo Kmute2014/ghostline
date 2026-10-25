@@ -17,6 +17,8 @@ model Profile {
   avatarFileId         String?
   nearbyVisible        Boolean                   @default(false)
   showInPeople         Boolean                   @default(true)
+  notifyWhenPeopleOnline Boolean                   @default(true)
+  onlineNotificationAudience String                @default("anyone")
   defaultStoryAudience String                    @default("public")
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
