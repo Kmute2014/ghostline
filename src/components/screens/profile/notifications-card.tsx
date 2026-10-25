@@ -110,7 +110,7 @@ export function NotificationsCard() {
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell className="h-4 w-4 text-primary" aria-hidden /> Chat notifications
@@ -255,7 +255,7 @@ export function OnlineNotificationsCard({
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Users className="h-4 w-4 text-primary" aria-hidden /> People coming online

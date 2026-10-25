@@ -137,7 +137,7 @@ function IdentityCard({ profile, applyProfile }: { profile: OwnProfile; applyPro
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <UserRound className="h-4 w-4 text-primary" aria-hidden /> Identity
@@ -237,7 +237,7 @@ function RecoveryCard({ profile }: { profile: OwnProfile }) {
   const [revealed, setRevealed] = useState(false)
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Fingerprint className="h-4 w-4 text-primary" aria-hidden /> Identity recovery
@@ -322,7 +322,7 @@ function InviteCard({ profile, applyProfile }: { profile: OwnProfile; applyProfi
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Share2 className="h-4 w-4 text-primary" aria-hidden /> Invite code
@@ -530,7 +530,7 @@ function DiscoveryCard({ profile, applyProfile }: { profile: OwnProfile; applyPr
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <MapPin className="h-4 w-4 text-primary" aria-hidden /> Discovery &amp; privacy
@@ -556,14 +556,14 @@ function DiscoveryCard({ profile, applyProfile }: { profile: OwnProfile; applyPr
         </div>
 
         <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2.5 text-xs">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Location permission</span>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 text-muted-foreground">Location permission</span>
             <PermissionBadge state={permission} />
           </div>
           <Separator />
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Coordinates last shared</span>
-            <span className={profile.locationUpdatedAt ? '' : 'text-muted-foreground'}>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 text-muted-foreground">Coordinates last shared</span>
+            <span className={profile.locationUpdatedAt ? 'min-w-0 text-right' : 'min-w-0 text-right text-muted-foreground'}>
               {profile.locationUpdatedAt ? relativeTime(profile.locationUpdatedAt) : 'Never shared'}
             </span>
           </div>
@@ -642,7 +642,7 @@ function InstallCard() {
   )
   if (installed) return null
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Smartphone className="h-4 w-4 text-primary" aria-hidden />
@@ -681,7 +681,7 @@ function DangerZoneCard() {
   }
 
   return (
-    <Card className="border-destructive/50">
+    <Card className="min-w-0 border-destructive/50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-destructive">
           <Trash2 className="h-4 w-4" aria-hidden /> Danger zone
@@ -693,10 +693,10 @@ function DangerZoneCard() {
           <AlertDialogTrigger asChild>
             <Button
               variant="outline"
-              className="w-full border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
+              className="h-auto min-h-9 w-full whitespace-normal border-destructive/50 py-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
             >
-              <Trash2 className="h-4 w-4" aria-hidden />
-              Delete this anonymous identity
+              <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="min-w-0 text-left">Delete this anonymous identity</span>
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent className="max-w-md">
@@ -772,7 +772,7 @@ export function ProfileScreen() {
   if (!profile) return null
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-5xl px-3 py-5 pb-24 sm:px-6 md:py-10">
+    <div className="mx-auto w-full min-w-0 max-w-5xl px-3 py-5 pb-24 sm:px-6 md:py-10 [&_[data-slot=card-content]]:px-4 [&_[data-slot=card-header]]:px-4 sm:[&_[data-slot=card-content]]:px-6 sm:[&_[data-slot=card-header]]:px-6">
       <header className="mb-6 flex min-w-0 flex-col gap-4 border-b pb-5 sm:mb-8 sm:flex-row sm:items-end sm:justify-between sm:pb-6 md:mb-10">
         <div className="min-w-0">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">

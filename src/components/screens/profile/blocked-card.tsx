@@ -37,7 +37,7 @@ export function BlockedUsersCard() {
   const blocks = blocksQuery.data?.blocks ?? []
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Ban className="h-4 w-4 text-muted-foreground" aria-hidden /> Blocked users
@@ -59,7 +59,7 @@ export function BlockedUsersCard() {
         ) : (
           <ul className="divide-y">
             {blocks.map((block) => (
-              <li key={block.publicId} className="flex items-center gap-3 py-2.5">
+              <li key={block.publicId} className="flex min-w-0 items-center gap-3 py-2.5">
                 <UserAvatar
                   displayName={block.displayName}
                   publicId={block.publicId}

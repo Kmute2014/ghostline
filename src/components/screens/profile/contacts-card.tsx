@@ -102,7 +102,7 @@ export function ContactsCard() {
   const contacts = contactsQuery.data?.contacts ?? []
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <UserPlus className="h-4 w-4 text-primary" aria-hidden /> Saved contacts
@@ -123,7 +123,7 @@ export function ContactsCard() {
         ) : (
           <ul className="divide-y">
             {contacts.map((contact) => (
-              <li key={contact.publicId} className="flex items-center gap-3 py-2.5">
+              <li key={contact.publicId} className="flex min-w-0 items-center gap-3 py-2.5">
                 <UserAvatar
                   displayName={contact.displayName}
                   publicId={contact.publicId}
