@@ -90,7 +90,7 @@ export function InstallPrompt({
     try {
       const result = await pwa.promptInstall()
       if (result === 'accepted') {
-        toast.success('Ghostline installed — find it on your home screen.')
+        toast.success('Hushly installed — find it on your home screen.')
         close()
       } else if (result === 'dismissed') {
         close()
@@ -125,7 +125,7 @@ export function InstallPrompt({
         <div className="flex items-start gap-3.5">
           <img
             src="/icon-192.png"
-            alt="Ghostline app icon"
+            alt="Hushly app icon"
             width={56}
             height={56}
             className="h-14 w-14 shrink-0 rounded-2xl border bg-background/60 shadow-sm"
@@ -133,13 +133,13 @@ export function InstallPrompt({
           <div className="min-w-0 space-y-1.5">
             <DialogTitle className="flex items-center gap-2 pr-6 text-base leading-snug">
               <Smartphone className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-              {variant === 'ios' ? 'Add Ghostline to your Home Screen' : 'Install the Ghostline app'}
+              {variant === 'ios' ? 'Add Hushly to your Home Screen' : 'Install the Hushly app'}
             </DialogTitle>
             <DialogDescription className="pr-6 text-[13px] leading-snug">
               {variant === 'ios'
                 ? 'On iPhone, the full-screen app and push notifications only work from the Home Screen icon. It takes a few taps:'
                 : variant === 'native'
-                  ? 'One tap and Ghostline sits on your home screen like a normal app.'
+                  ? 'One tap and Hushly sits on your home screen like a normal app.'
                   : 'Your browser installs web apps straight from its menu. Two taps:'}
             </DialogDescription>
           </div>
@@ -150,7 +150,7 @@ export function InstallPrompt({
             {/* Safari toolbar mock — highlights the Share button (step 1) */}
             <div className="flex items-center justify-between rounded-xl border bg-muted/40 px-3 py-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Globe className="h-3.5 w-3.5" aria-hidden /> ghostline.app
+                <Globe className="h-3.5 w-3.5" aria-hidden /> hushly.app
               </div>
               <span
                 className="flex h-8 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-primary/30"
@@ -169,7 +169,7 @@ export function InstallPrompt({
                 Scroll down and tap <strong className="font-medium">&ldquo;Add to Home Screen&rdquo;</strong>
               </InstallStep>
               <InstallStep n={3}>
-                Tap <strong className="font-medium">&ldquo;Add&rdquo;</strong> — Ghostline gets its own icon
+                Tap <strong className="font-medium">&ldquo;Add&rdquo;</strong> — Hushly gets its own icon
               </InstallStep>
             </ol>
           </div>

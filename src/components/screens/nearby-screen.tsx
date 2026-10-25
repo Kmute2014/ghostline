@@ -212,7 +212,7 @@ export function NearbyScreen() {
             <div className="space-y-1.5">
               <h2 className="font-semibold">Find your people nearby 🌍</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Ghostline will ask for your location only now. Others see an <strong>approximate distance</strong> —
+                Hushly will ask for your location only now. Others see an <strong>approximate distance</strong> —
                 never your coordinates — and only while you stay visible. Turning discovery off deletes your
                 stored position immediately.
               </p>
@@ -361,7 +361,7 @@ export function NearbyScreen() {
 
           <p className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5">
             <ShieldQuestion className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
-            Distances are approximate and rounded. Ghostline never shows anyone's exact position and
+            Distances are approximate and rounded. Hushly never shows anyone's exact position and
             cannot track movement. You appear here only while visibility is on and your app is open.
           </p>
         </>

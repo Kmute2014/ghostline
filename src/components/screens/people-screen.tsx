@@ -76,11 +76,11 @@ export function PeopleScreen() {
     if (!code) return
     const shareUrl = invite.data?.shareUrl
     const text = shareUrl
-      ? `Add me on Ghostline — my code: ${code} or open ${shareUrl}`
-      : `Add me on Ghostline — my code: ${code}`
+      ? `Add me on Hushly — my code: ${code} or open ${shareUrl}`
+      : `Add me on Hushly — my code: ${code}`
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'Ghostline', text })
+        await navigator.share({ title: 'Hushly', text })
         return
       }
     } catch (err) {

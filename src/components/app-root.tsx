@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion'
-import { Ghost, WifiOff } from 'lucide-react'
+import { WifiOff } from 'lucide-react'
 import { api } from '@/lib/client-api'
+import { HushlyMark } from '@/components/shared/hushly-mark'
 import { useAppStore, type Tab } from '@/store/app-store'
 import { useRealtime } from '@/hooks/use-realtime'
 import { usePwaRuntime } from '@/hooks/use-pwa'
@@ -30,8 +31,8 @@ const PAGE_SPRING = { type: 'spring' as const, stiffness: 400, damping: 38, mass
 function Splash() {
   return (
     <div className="app-shell flex flex-col items-center justify-center gap-3">
-      <Ghost className="h-10 w-10 text-primary animate-pulse" aria-hidden />
-      <p className="text-sm text-muted-foreground">Tuning into the ghost frequency…</p>
+      <HushlyMark className="h-10 w-10 animate-pulse" aria-hidden />
+      <p className="text-sm text-muted-foreground">Tuning into the Hushly signal…</p>
     </div>
   )
 }
@@ -289,10 +290,10 @@ export function AppRoot() {
       <header className="app-header sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/70 bg-background/80 px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
         <div className="flex items-center gap-2.5">
           <span className="brand-mark flex h-8 w-8 items-center justify-center rounded-xl ring-1 ring-white/15">
-            <Ghost className="h-5 w-5 text-primary" aria-hidden />
+            <HushlyMark className="h-5 w-5" aria-hidden />
           </span>
-          <span className="font-semibold tracking-tight">Ghostline</span>
-          <span className="hidden text-xs text-muted-foreground sm:inline">your people, your planet ✨</span>
+          <span className="font-semibold tracking-tight">Hushly</span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">quiet connections ✨</span>
         </div>
         <div
           title={socketConnected ? 'Realtime connected' : 'Realtime offline — retrying'}
@@ -360,8 +361,8 @@ export function AppRoot() {
           </div>
           {/* Sticky footer (desktop; mobile bottom nav plays this role) */}
           <footer className="hidden md:block mt-auto py-3 text-center text-[11px] text-muted-foreground border-t">
-            Ghostline — anonymous, no matching algorithms. See who's online, chat directly, stay in
-            control of your visibility. 13+ only.
+            Hushly — quiet by design. See who's online, chat directly, stay in control of your
+            visibility. 13+ only.
           </footer>
         </main>
       </div>

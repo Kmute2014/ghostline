@@ -1,5 +1,5 @@
 /*
- * Ghostline Service Worker
+ * Hushly Service Worker
  * ------------------------
  * 1. PWA app-shell caching: instant cold starts, graceful offline fallback.
  * 2. Web Push: shows notifications for messages received while the app is
@@ -97,7 +97,7 @@ self.addEventListener('fetch', (event) => {
           const shell = (await caches.match('/')) || (await caches.match(req))
           return (
             shell ||
-            new Response('<h1>Ghostline is offline</h1>', {
+            new Response('<h1>Hushly is offline</h1>', {
               status: 503,
               headers: { 'Content-Type': 'text/html' },
             })
@@ -110,7 +110,7 @@ self.addEventListener('fetch', (event) => {
 // ─── web push ────────────────────────────────────────────────────────────────
 
 self.addEventListener('push', (event) => {
-  let payload = { title: 'Ghostline', body: 'New activity — tap to open.', url: '/' }
+  let payload = { title: 'Hushly', body: 'New activity — tap to open.', url: '/' }
   try {
     if (event.data) payload = { ...payload, ...event.data.json() }
   } catch {

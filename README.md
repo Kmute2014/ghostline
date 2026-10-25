@@ -1,4 +1,4 @@
-# Ghostline — Anonymous Location-Based Chat & Social Discovery
+# Hushly — Quiet Nearby Chat & Social Discovery
 
 Anonymous, mobile-first social discovery: see **everyone who's online** in the People directory,
 find people **Nearby**, share 24-hour **Stories**, and connect through **invite codes** — with

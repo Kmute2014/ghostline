@@ -17,7 +17,7 @@ const NAME_RE = /^[\p{L}\p{N} _.'-]{2,24}$/u
 
 function validateDisplayName(name: string | undefined): string {
   const trimmed = (name ?? '').trim().replace(/\s+/g, ' ')
-  if (!trimmed) return `Ghost-${Math.floor(1000 + Math.random() * 9000)}`
+  if (!trimmed) return `Hush-${Math.floor(1000 + Math.random() * 9000)}`
   if (!NAME_RE.test(trimmed)) {
     throw badRequest('Display name must be 2–24 letters, numbers or spaces.', 'INVALID_NAME')
   }

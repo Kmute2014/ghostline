@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react'
-import { Link2, Ghost, UsersRound, Loader2 } from 'lucide-react'
+import { Link2, UsersRound, Loader2 } from 'lucide-react'
+import { HushlyMark } from '@/components/shared/hushly-mark'
 import {
   Dialog,
   DialogContent,
@@ -134,7 +135,7 @@ export function InviteDialog({ code, onClose }: { code: string; onClose: () => v
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Ghost className="h-5 w-5 text-primary" /> Someone invited you
+                <HushlyMark className="h-5 w-5" /> Someone invited you
               </DialogTitle>
               <DialogDescription>
                 Use their invite code to open a direct conversation. It works even if they turned off

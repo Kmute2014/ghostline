@@ -354,7 +354,7 @@ export function StoryComposer({
                   Public
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Visible to everyone on Ghostline
+                  Visible to everyone on Hushly
                 </span>
               </span>
             </label>

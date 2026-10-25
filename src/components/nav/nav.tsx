@@ -111,7 +111,7 @@ export function SideNav({ unread }: { unread: number }) {
         })}
       </nav>
       <div className="mt-auto p-4 text-[11px] text-muted-foreground leading-relaxed">
-        Ghostline · anonymous by design
+        Hushly · quiet by design
         <br />
         13+ · be kind, report abuse
       </div>

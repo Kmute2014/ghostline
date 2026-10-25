@@ -14,15 +14,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ghostline — Nearby, Anonymous, Ephemeral",
+  title: "Hushly — Quiet Nearby Chat",
   description:
     "Anonymous social discovery: find people nearby, see who is online, chat instantly, share 24-hour stories and connect through invite codes. No phone number, no email, no password.",
-  applicationName: "Ghostline",
+  applicationName: "Hushly",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Ghostline",
+    title: "Hushly",
   },
   formatDetection: { telephone: false },
   icons: {

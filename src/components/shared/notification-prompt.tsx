@@ -96,7 +96,7 @@ export function NotificationPrompt({
             <BellRing className="h-5 w-5 text-primary" aria-hidden /> Enable notifications?
           </DialogTitle>
           <DialogDescription>
-            Ghostline can pop up a notification when someone messages you — even while the app is
+            Hushly can pop up a notification when someone messages you — even while the app is
             closed. You can change this anytime from your Profile.
           </DialogDescription>
         </DialogHeader>

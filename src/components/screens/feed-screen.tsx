@@ -40,7 +40,7 @@ import type { PostCommentDTO, PostDTO } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 /**
- * Buzz — Ghostline's text-only public feed (à la Jodel): say what's on your
+ * Buzz — Hushly's text-only public feed (à la Jodel): say what's on your
  * mind, everyone can like/dislike and comment. No pictures, no videos.
  * Votes are optimistic (server reconciles), posts/comments arrive live via
  * the feed:update socket broadcast + a 30s poll as the safety net.
@@ -300,7 +300,7 @@ export function FeedScreen() {
       <p className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5 mt-auto pb-1">
         <TriangleAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
         <span>
-          Text posts only — no pictures or videos. Everyone on Ghostline sees Buzz. Be kind, report
+          Text posts only — no pictures or videos. Everyone on Hushly sees Buzz. Be kind, report
           anything that breaks the rules.
         </span>
       </p>

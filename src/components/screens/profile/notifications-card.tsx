@@ -106,7 +106,7 @@ export function NotificationsCard() {
           <Bell className="h-4 w-4 text-primary" aria-hidden /> Notifications
         </CardTitle>
         <CardDescription>
-          Get a pop-up when someone messages you — even when Ghostline is closed.
+          Get a pop-up when someone messages you — even when Hushly is closed.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -196,7 +196,7 @@ export function NotificationsCard() {
 
         {iosHint && view !== 'granted' && (
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            On iPhone, notifications require Ghostline installed on your Home Screen
+            On iPhone, notifications require Hushly installed on your Home Screen
             (Share → Add to Home Screen).
           </p>
         )}

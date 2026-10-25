@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Ghostline — Anonymous Nearby Chat",
-  "short_name": "Ghostline",
+  "name": "Hushly — Quiet Nearby Chat",
+  "short_name": "Hushly",
   "description": "Anonymous social discovery: see who is online, chat instantly, find people by invite code. No phone number, no email, no password.",
   "start_url": "/",
   "scope": "/",

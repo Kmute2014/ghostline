@@ -142,7 +142,7 @@ function IdentityCard({ profile, applyProfile }: { profile: OwnProfile; applyPro
         <CardTitle className="flex items-center gap-2">
           <UserRound className="h-4 w-4 text-primary" aria-hidden /> Identity
         </CardTitle>
-        <CardDescription>How you appear to others on Ghostline. No email, no phone number.</CardDescription>
+        <CardDescription>How you appear to others on Hushly. No email, no phone number.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex items-center gap-4">
@@ -293,10 +293,10 @@ function InviteCard({ profile, applyProfile }: { profile: OwnProfile; applyProfi
     inviteQuery.data?.shareUrl ?? `${typeof window === 'undefined' ? '' : window.location.origin}/?invite=${inviteCode}`
 
   async function shareInvite() {
-    const text = `Find me on Ghostline with my invite code ${inviteCode}.`
+    const text = `Find me on Hushly with my invite code ${inviteCode}.`
     if (typeof navigator.share === 'function') {
       try {
-        await navigator.share({ title: 'Ghostline', text, url: shareUrl })
+        await navigator.share({ title: 'Hushly', text, url: shareUrl })
         return
       } catch (err) {
         // User dismissed the share sheet — do not fall through to copying.
@@ -643,7 +643,7 @@ function InstallCard() {
           Get the app
         </CardTitle>
         <CardDescription>
-          Add Ghostline to your home screen for the full-screen experience and instant message
+          Add Hushly to your home screen for the full-screen experience and instant message
           alerts. Works on iPhone (via Safari share menu) and Android.
         </CardDescription>
       </CardHeader>
@@ -821,7 +821,7 @@ export function ProfileScreen() {
               App &amp; notifications
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Choose how Ghostline keeps you connected on this device.
+              Choose how Hushly keeps you connected on this device.
             </p>
           </div>
           <div className="grid items-start gap-4 md:grid-cols-2 md:gap-5">

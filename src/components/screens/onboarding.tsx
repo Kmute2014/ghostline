@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from 'react'
-import { Ghost, MapPin, MessageCircle, Sparkles, ShieldCheck, KeyRound } from 'lucide-react'
+import { MapPin, MessageCircle, Sparkles, ShieldCheck, KeyRound } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion'
+import { HushlyMark } from '@/components/shared/hushly-mark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,7 +18,7 @@ import type { SessionResponse } from '@/lib/types'
 export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => void }) {
   const reduced = useReducedMotion() ?? false
   const [mode, setMode] = useState<'intro' | 'recover'>('intro')
-  const [name, setName] = useState(`Ghost-${Math.floor(1000 + Math.random() * 9000)}`)
+  const [name, setName] = useState(`Hush-${Math.floor(1000 + Math.random() * 9000)}`)
   const [recoveryCode, setRecoveryCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,10 +68,10 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
       >
         <div className="text-center space-y-3">
           <div className="brand-mark mx-auto w-16 h-16 rounded-2xl ring-1 ring-white/20 flex items-center justify-center shadow-lg shadow-primary/10">
-            <Ghost className="h-9 w-9 text-[#101923]" aria-hidden />
+            <HushlyMark className="h-9 w-9" aria-hidden />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Ghostline <span aria-hidden>👻</span></h1>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Your corner of the internet ✨</p>
+          <h1 className="text-3xl font-bold tracking-tight">Hushly</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Quiet conversation, nearby ✨</p>
           <p className="text-muted-foreground text-sm leading-relaxed">
             See everyone who's online and start chatting instantly, find people nearby, share
             24-hour stories and connect with invite codes — all without a phone number, email or
@@ -98,7 +99,7 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     maxLength={24}
-                    placeholder="Ghost-1234"
+                    placeholder="Hush-1234"
                     autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -128,7 +129,7 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
                   </motion.li>
                   <motion.li className="flex gap-2.5" variants={itemVariants}>
                     <Sparkles className="h-4 w-4 mt-0.5 text-primary shrink-0" aria-hidden />
-                    Ghostline is for people aged 13 and over. Be kind — blocking and reporting are one
+                    Hushly is for people aged 13 and over. Be kind — blocking and reporting are one
                     tap away.
                   </motion.li>
                 </motion.ul>
@@ -140,7 +141,7 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 >
                   <Button className="w-full" size="lg" onClick={start} disabled={busy}>
-                    {busy ? 'Creating your identity…' : 'Enter Ghostline'}
+                    {busy ? 'Creating your identity…' : 'Enter Hushly'}
                   </Button>
                 </motion.div>
                 <button
