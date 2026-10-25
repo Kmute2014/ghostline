@@ -242,7 +242,7 @@ export function AppRoot() {
     setPrevTab(tab)
   }
 
-  const tabVariants: Variants = reduced || isIOS
+  const tabVariants: Variants = reduced
     ? { enter: { opacity: 0 }, center: { opacity: 1 }, exit: { opacity: 0 } }
     : {
         enter: (dir: number) => ({ opacity: 0, x: dir * 28 }),
@@ -251,13 +251,26 @@ export function AppRoot() {
       }
 
   // iOS-style page push for the chat view (slides up over the tab content).
-  const chatVariants: Variants = reduced || isIOS
+  const chatVariants: Variants = reduced
     ? { enter: { opacity: 0 }, center: { opacity: 1 }, exit: { opacity: 0 } }
     : {
         enter: { opacity: 0, y: 24, scale: 0.995 },
         center: { opacity: 1, y: 0, scale: 1 },
         exit: { opacity: 0, y: 24, scale: 0.995 },
       }
+
+  const screenContent = activeConversationId ? (
+    <ChatView conversationId={activeConversationId} />
+  ) : (
+    <>
+      {tab === 'people' && <PeopleScreen />}
+      {tab === 'nearby' && <NearbyScreen />}
+      {tab === 'feed' && <FeedScreen />}
+      {tab === 'stories' && <StoriesScreen />}
+      {tab === 'chats' && <ChatsScreen />}
+      {tab === 'profile' && <ProfileScreen />}
+    </>
+  )
 
   if (session.isLoading || (session.isPending && !profileChecked)) {
     return <Splash />
@@ -331,40 +344,29 @@ export function AppRoot() {
           )}
         >
           <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-            <AnimatePresence initial={false} mode="wait" custom={direction}>
-              {activeConversationId ? (
+            {isIOS ? (
+              <div
+                key={activeConversationId ? 'chat' : tab}
+                className="flex-1 min-h-0 flex flex-col overflow-hidden"
+              >
+                {screenContent}
+              </div>
+            ) : (
+              <AnimatePresence initial={false} mode="wait" custom={direction}>
                 <motion.div
-                  key="chat"
+                  key={activeConversationId ? 'chat' : tab}
                   custom={direction}
-                  variants={chatVariants}
+                  variants={activeConversationId ? chatVariants : tabVariants}
                   initial="enter"
                   animate="center"
                   exit="exit"
                   transition={PAGE_SPRING}
                   className="flex-1 min-h-0 flex flex-col overflow-hidden"
                 >
-                  <ChatView conversationId={activeConversationId} />
+                  {screenContent}
                 </motion.div>
-              ) : (
-                <motion.div
-                  key={tab}
-                  custom={direction}
-                  variants={tabVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={PAGE_SPRING}
-                  className="flex-1 min-h-0 flex flex-col overflow-hidden"
-                >
-                  {tab === 'people' && <PeopleScreen />}
-                  {tab === 'nearby' && <NearbyScreen />}
-                  {tab === 'feed' && <FeedScreen />}
-                  {tab === 'stories' && <StoriesScreen />}
-                  {tab === 'chats' && <ChatsScreen />}
-                  {tab === 'profile' && <ProfileScreen />}
-                </motion.div>
-              )}
-            </AnimatePresence>
+              </AnimatePresence>
+            )}
           </div>
           {/* Sticky footer (desktop; mobile bottom nav plays this role) */}
           <footer className="hidden md:block mt-auto py-3 text-center text-[11px] text-muted-foreground border-t">
