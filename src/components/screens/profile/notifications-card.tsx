@@ -125,8 +125,8 @@ export function NotificationsCard() {
         )}
 
         {view === 'denied' && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-200">
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-950">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-800" aria-hidden />
             <span className="flex-1">
               Notifications are blocked for this site. Enable them in your browser's site settings
               (iOS Settings → Safari → Notifications, after installing the app).

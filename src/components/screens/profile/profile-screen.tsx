@@ -187,7 +187,7 @@ function IdentityCard({ profile, applyProfile }: { profile: OwnProfile; applyPro
 
         <div className="space-y-1.5">
           <Label htmlFor="display-name">Display name</Label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <div className="min-w-0 flex-1">
               <Input
                 id="display-name"
@@ -197,7 +197,11 @@ function IdentityCard({ profile, applyProfile }: { profile: OwnProfile; applyPro
                 autoComplete="off"
               />
             </div>
-            <Button onClick={() => void saveName()} disabled={!nameDirty || !nameValid || savingName}>
+            <Button
+              className="w-full shrink-0 sm:w-auto"
+              onClick={() => void saveName()}
+              disabled={!nameDirty || !nameValid || savingName}
+            >
               {savingName ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
@@ -265,8 +269,8 @@ function RecoveryCard({ profile }: { profile: OwnProfile }) {
             Copy
           </Button>
         </div>
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-200">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-950">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-800" aria-hidden />
           <span>
             If this browser’s storage is cleared, this code is the only way to restore your identity.
             Store it somewhere safe.
@@ -385,7 +389,7 @@ type PermissionView = 'granted' | 'prompt' | 'denied' | 'unsupported' | 'checkin
 function PermissionBadge({ state }: { state: PermissionView }) {
   const map: Record<PermissionView, { label: string; className: string }> = {
     granted: { label: 'Granted', className: 'border-emerald-500/50 text-emerald-400' },
-    prompt: { label: 'Not asked yet', className: 'border-amber-500/50 text-amber-400' },
+    prompt: { label: 'Not asked yet', className: 'border-amber-600/60 text-amber-800' },
     denied: { label: 'Denied', className: 'border-destructive/50 text-destructive' },
     unsupported: { label: 'Unavailable', className: 'text-muted-foreground' },
     checking: { label: 'Checking…', className: 'text-muted-foreground' },
@@ -759,29 +763,84 @@ export function ProfileScreen() {
   if (!profile) return null
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-6 pb-12 md:py-8">
-      <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-card">
-          <UserRound className="h-5 w-5 text-primary" aria-hidden />
-        </div>
+    <div className="mx-auto w-full max-w-5xl px-4 py-6 pb-24 sm:px-6 md:py-10">
+      <header className="mb-8 flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between md:mb-10">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight">Profile &amp; privacy</h1>
-          <p className="truncate text-sm text-muted-foreground">
-            Your identity, discovery and safety — all yours 🔐
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+            Your account
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Profile &amp; privacy</h1>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Manage how you appear, who can find you, and how to keep your identity safe.
           </p>
         </div>
-      </div>
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border bg-card/70 px-3 py-2 text-xs font-medium text-muted-foreground">
+          <ShieldCheck className="h-4 w-4 text-emerald-400" aria-hidden />
+          Anonymous by design
+        </div>
+      </header>
 
-      <div className="space-y-4 md:space-y-6">
-        <IdentityCard profile={profile} applyProfile={applyProfile} />
-        <RecoveryCard profile={profile} />
-        <InviteCard profile={profile} applyProfile={applyProfile} />
-        <NotificationsCard />
-        <InstallCard />
-        <DiscoveryCard profile={profile} applyProfile={applyProfile} />
-        <ContactsCard />
-        <BlockedUsersCard />
-        <DangerZoneCard />
+      <div className="space-y-10 md:space-y-12">
+        <section aria-labelledby="profile-identity-heading">
+          <div className="mb-4">
+            <h2 id="profile-identity-heading" className="text-lg font-semibold tracking-tight">
+              Identity &amp; access
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Update how people recognize you and protect access to your account.
+            </p>
+          </div>
+          <div className="grid items-start gap-4 md:grid-cols-2 md:gap-5">
+            <IdentityCard profile={profile} applyProfile={applyProfile} />
+            <RecoveryCard profile={profile} />
+            <InviteCard profile={profile} applyProfile={applyProfile} />
+          </div>
+        </section>
+
+        <section aria-labelledby="profile-privacy-heading">
+          <div className="mb-4">
+            <h2 id="profile-privacy-heading" className="text-lg font-semibold tracking-tight">
+              Privacy &amp; connections
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose how you show up and manage the people in your circle.
+            </p>
+          </div>
+          <div className="grid items-start gap-4 md:grid-cols-2 md:gap-5">
+            <div className="md:col-span-2">
+              <DiscoveryCard profile={profile} applyProfile={applyProfile} />
+            </div>
+            <ContactsCard />
+            <BlockedUsersCard />
+          </div>
+        </section>
+
+        <section aria-labelledby="profile-app-heading">
+          <div className="mb-4">
+            <h2 id="profile-app-heading" className="text-lg font-semibold tracking-tight">
+              App &amp; notifications
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose how Ghostline keeps you connected on this device.
+            </p>
+          </div>
+          <div className="grid items-start gap-4 md:grid-cols-2 md:gap-5">
+            <NotificationsCard />
+            <InstallCard />
+          </div>
+        </section>
+
+        <section aria-labelledby="profile-account-heading">
+          <div className="mb-4">
+            <h2 id="profile-account-heading" className="text-lg font-semibold tracking-tight">
+              Account
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Permanently remove this identity and its data.
+            </p>
+          </div>
+          <DangerZoneCard />
+        </section>
       </div>
     </div>
   )
