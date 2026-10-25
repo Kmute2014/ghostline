@@ -27,6 +27,7 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
   icons: {
     icon: [
+      { url: "/logo.svg", type: "image/svg+xml", sizes: "any" },
       { url: "/favicon-32.png", type: "image/png", sizes: "32x32" },
       { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
     ],

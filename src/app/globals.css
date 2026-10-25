@@ -201,7 +201,13 @@ body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
   isolation: isolate;
 }
 .brand-mark {
-  background: linear-gradient(140deg, oklch(0.62 0.22 258) 5%, oklch(0.72 0.17 45) 58%, oklch(0.72 0.19 345));
+  background: #111827;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.brand-mark svg {
+  filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.14));
 }
 .onboarding-stage {
   background:

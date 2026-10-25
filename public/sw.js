@@ -7,7 +7,7 @@
  * 3. notificationclick: focuses the running app or opens a deep link.
  */
 
-const VERSION = 'ghostline-v2'
+const VERSION = 'hushly-v3'
 const SHELL_CACHE = `${VERSION}-shell`
 const STATIC_CACHE = `${VERSION}-static`
 
