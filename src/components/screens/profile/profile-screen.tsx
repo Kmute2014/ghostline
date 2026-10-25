@@ -539,8 +539,8 @@ function DiscoveryCard({ profile, applyProfile }: { profile: OwnProfile; applyPr
       </CardHeader>
       <CardContent className="space-y-5">
         {/* Nearby visibility */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1 space-y-1">
             <Label htmlFor="nearby-visible">Nearby visibility</Label>
             <p className="text-xs text-muted-foreground">
               Appear on the nearby radar for people within range of you.
@@ -548,6 +548,7 @@ function DiscoveryCard({ profile, applyProfile }: { profile: OwnProfile; applyPr
           </div>
           <Switch
             id="nearby-visible"
+            className="shrink-0"
             checked={nearbyLocal}
             disabled={locationBusy}
             onCheckedChange={(v) => void handleNearbyChange(v)}
@@ -571,8 +572,8 @@ function DiscoveryCard({ profile, applyProfile }: { profile: OwnProfile; applyPr
         <Separator />
 
         {/* People directory visibility */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1 space-y-1">
             <Label htmlFor="random-chat">Show me in People</Label>
             <p className="text-xs text-muted-foreground">
               Appear in the online People directory while you're online. Turning this off doesn't
@@ -581,6 +582,7 @@ function DiscoveryCard({ profile, applyProfile }: { profile: OwnProfile; applyPr
           </div>
           <Switch
             id="random-chat"
+            className="shrink-0"
             checked={randomLocal}
             disabled={randomBusy}
             onCheckedChange={(v) => void handlePeopleVisibilityChange(v)}
@@ -590,13 +592,17 @@ function DiscoveryCard({ profile, applyProfile }: { profile: OwnProfile; applyPr
         <Separator />
 
         {/* Default story audience */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1 space-y-1">
             <Label htmlFor="story-audience">Default story audience</Label>
             <p className="text-xs text-muted-foreground">Pre-selected when you post a new story.</p>
           </div>
           <Select value={audience} onValueChange={(v) => void handleAudienceChange(v)} disabled={audienceBusy}>
-            <SelectTrigger id="story-audience" className="w-40 shrink-0 sm:w-48" aria-label="Default story audience">
+            <SelectTrigger
+              id="story-audience"
+              className="w-full sm:w-48 sm:shrink-0"
+              aria-label="Default story audience"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -685,7 +691,10 @@ function DangerZoneCard() {
       <CardContent>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive">
+            <Button
+              variant="outline"
+              className="w-full border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
+            >
               <Trash2 className="h-4 w-4" aria-hidden />
               Delete this anonymous identity
             </Button>
@@ -763,8 +772,8 @@ export function ProfileScreen() {
   if (!profile) return null
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 pb-24 sm:px-6 md:py-10">
-      <header className="mb-8 flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between md:mb-10">
+    <div className="mx-auto w-full min-w-0 max-w-5xl px-3 py-5 pb-24 sm:px-6 md:py-10">
+      <header className="mb-6 flex min-w-0 flex-col gap-4 border-b pb-5 sm:mb-8 sm:flex-row sm:items-end sm:justify-between sm:pb-6 md:mb-10">
         <div className="min-w-0">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
             Your account
@@ -780,7 +789,7 @@ export function ProfileScreen() {
         </div>
       </header>
 
-      <div className="space-y-10 md:space-y-12">
+      <div className="min-w-0 space-y-8 md:space-y-12">
         <section aria-labelledby="profile-identity-heading">
           <div className="mb-4">
             <h2 id="profile-identity-heading" className="text-lg font-semibold tracking-tight">

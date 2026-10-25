@@ -265,20 +265,21 @@ export function OnlineNotificationsCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="online-notifications" className="text-sm font-medium">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <Label htmlFor="online-notifications" className="min-w-0 text-sm font-medium">
             Notify me when people come online
           </Label>
           <Switch
             id="online-notifications"
+            className="shrink-0"
             checked={profile.notifyWhenPeopleOnline}
             disabled={busy}
             onCheckedChange={(enabled) => void handleChange(enabled)}
             aria-label="Notify me when people come online"
           />
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="online-notification-audience" className="text-sm font-medium">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <Label htmlFor="online-notification-audience" className="min-w-0 text-sm font-medium">
             Notify me about
           </Label>
           <Select
@@ -288,7 +289,7 @@ export function OnlineNotificationsCard({
               if (value === 'anyone' || value === 'friends') void handleAudienceChange(value)
             }}
           >
-            <SelectTrigger id="online-notification-audience" className="w-36">
+            <SelectTrigger id="online-notification-audience" className="w-full sm:w-36 sm:shrink-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
