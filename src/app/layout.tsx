@@ -42,8 +42,8 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   userScalable: false,
-  // Software keyboard resizes the layout viewport (Android/Chrome) so the chat
-  // composer rides above it; iOS Safari is handled via visualViewport (--gl-kb).
+  // Software keyboard resizes the layout viewport (Android/Chrome); iOS Safari
+  // uses ChatView's visualViewport height to keep the composer above it.
   interactiveWidget: "resizes-content",
 };
 

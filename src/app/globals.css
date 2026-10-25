@@ -243,15 +243,12 @@ body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
   :root { --gl-header-h: calc(3.5rem + env(safe-area-inset-top)); }
 }
 
-/* ── WhatsApp-style chat viewport (Task 16) ────────────────────────────── */
-/* Full-height chat under the app header that lifts above the software
-   keyboard: ChatView writes the keyboard overlap into --gl-kb via the
-   visualViewport API (iOS ignores interactive-widget=resizes-content).
-   Written as plain CSS because Tailwind arbitrary values with nested
-   var(…, …) calc() don't compile reliably. */
-:root { --gl-kb: 0px; }
+/* ── WhatsApp-style chat viewport ──────────────────────────────────────── */
+/* ChatView writes the currently visible height from visualViewport so the
+   header and composer stay above the software keyboard across mobile browsers. */
+:root { --gl-visual-viewport-height: 100dvh; }
 .gl-chat-viewport {
-  height: calc(100dvh - var(--gl-header-h, 3.5rem) - var(--gl-kb, 0px));
+  height: calc(min(100dvh, var(--gl-visual-viewport-height, 100dvh)) - var(--gl-header-h, 3.5rem));
   max-width: 80rem;
   border-inline: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
   background: color-mix(in oklab, var(--background) 82%, transparent);
@@ -259,7 +256,7 @@ body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
 }
 @media (min-width: 768px) {
   .gl-chat-viewport {
-    height: calc(100dvh - var(--gl-header-h, 3.5rem) - 49px);
+    height: calc(min(100dvh, var(--gl-visual-viewport-height, 100dvh)) - var(--gl-header-h, 3.5rem) - 49px);
   }
 }
 

@@ -23,9 +23,9 @@ export function shortTime(iso: string): string {
   return format(d, 'd MMM, HH:mm')
 }
 
-export function countdownLabel(expiresAt: string | null): string | null {
+export function countdownLabel(expiresAt: string | null, now = Date.now()): string | null {
   if (!expiresAt) return null
-  const remaining = new Date(expiresAt).getTime() - Date.now()
+  const remaining = new Date(expiresAt).getTime() - now
   if (remaining <= 0) return 'Expired'
   const mins = Math.floor(remaining / 60_000)
   if (mins < 60) return `${mins} min left`

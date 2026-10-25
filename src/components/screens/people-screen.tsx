@@ -124,7 +124,7 @@ export function PeopleScreen() {
         openConversation(person.conversationId)
         return
       }
-      const res = await api.createConversation(person.publicId, 'never')
+      const res = await api.createConversation(person.publicId, '24h')
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       queryClient.invalidateQueries({ queryKey: ['people'] })
       openConversation(res.conversation.id)

@@ -27,7 +27,7 @@ import type { ExpirationPolicyDTO, InviteLookupResponse } from '@/lib/types'
 export function InviteDialog({ code, onClose }: { code: string; onClose: () => void }) {
   const openConversation = useAppStore((s) => s.openConversation)
   const [editableCode, setEditableCode] = useState(code)
-  const [policy, setPolicy] = useState<ExpirationPolicyDTO>('never')
+  const [policy, setPolicy] = useState<ExpirationPolicyDTO>('24h')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<InviteLookupResponse | null>(null)

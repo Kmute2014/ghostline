@@ -78,7 +78,7 @@ export function ExpirationDialog({
   busy?: boolean
   onConfirm: (policy: ExpirationPolicyDTO) => void
 }) {
-  const [policy, setPolicy] = useState<ExpirationPolicyDTO>('never')
+  const [policy, setPolicy] = useState<ExpirationPolicyDTO>('24h')
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">

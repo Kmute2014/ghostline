@@ -323,8 +323,8 @@ export function AppRoot() {
             chatOpen ? 'pb-0' : 'pb-[64px] md:pb-0',
           )}
         >
-          <div className="relative flex-1 flex flex-col overflow-x-clip">
-            <AnimatePresence initial={false} mode="popLayout" custom={direction}>
+          <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+            <AnimatePresence initial={false} mode="wait" custom={direction}>
               {activeConversationId ? (
                 <motion.div
                   key="chat"
@@ -334,7 +334,7 @@ export function AppRoot() {
                   animate="center"
                   exit="exit"
                   transition={PAGE_SPRING}
-                  className="flex-1 min-h-0 flex flex-col"
+                  className="flex-1 min-h-0 flex flex-col overflow-hidden"
                 >
                   <ChatView conversationId={activeConversationId} />
                 </motion.div>
@@ -347,7 +347,7 @@ export function AppRoot() {
                   animate="center"
                   exit="exit"
                   transition={PAGE_SPRING}
-                  className="flex-1 flex flex-col"
+                  className="flex-1 min-h-0 flex flex-col overflow-hidden"
                 >
                   {tab === 'people' && <PeopleScreen />}
                   {tab === 'nearby' && <NearbyScreen />}

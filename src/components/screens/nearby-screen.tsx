@@ -431,6 +431,7 @@ export function NearbyScreen() {
 
       {/* Choose expiration then create */}
       <ExpirationDialog
+        key={chatTarget?.publicId ?? 'closed'}
         open={!!chatTarget}
         onOpenChange={(open) => !open && setChatTarget(null)}
         title={`Start a chat with ${chatTarget?.displayName ?? ''}`}

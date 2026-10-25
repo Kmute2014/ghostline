@@ -32,7 +32,6 @@ import { getSocket, currentSocketToken } from '@/lib/socket-client'
 import { useAppStore } from '@/store/app-store'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { lastSeenLabel, shortTime, countdownLabel } from '@/components/shared/bits'
-import { ExpirationPicker } from '@/components/shared/expiration-dialog'
 import { ReportDialog } from '@/components/shared/report-dialog'
 import { GroupAddMembersDialog } from '@/components/screens/group-add-members-dialog'
 import { copyWithToast } from './profile/profile-bits'
@@ -42,6 +41,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import {
@@ -181,14 +187,18 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
           value={text}
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (
+              e.key === 'Enter' &&
+              !e.shiftKey &&
+              !window.matchMedia('(pointer: coarse)').matches
+            ) {
               e.preventDefault()
               sendText()
             }
           }}
           placeholder="Message…"
           rows={1}
-          enterKeyHint="send"
+          enterKeyHint="enter"
           autoComplete="off"
           className="min-h-10 max-h-32 resize-none rounded-2xl border-border/70 bg-muted/50 px-4 py-2.5 overflow-y-auto field-sizing-fixed focus-visible:bg-background"
           maxLength={2000}
@@ -199,7 +209,14 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
           whileTap={reduced ? undefined : { scale: 0.88 }}
           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
         >
-          <Button size="icon" className="h-10 w-10 rounded-xl shadow-sm sm:h-11 sm:w-11" onClick={sendText} disabled={!text.trim() || sending} aria-label="Send message">
+          <Button
+            size="icon"
+            className="h-10 w-10 rounded-xl shadow-sm sm:h-11 sm:w-11"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={sendText}
+            disabled={!text.trim() || sending}
+            aria-label="Send message"
+          >
             <SendHorizontal className="h-4.5 w-4.5" />
           </Button>
         </motion.div>
@@ -232,6 +249,43 @@ function DeliveryLabel({ createdAt }: { createdAt: string }) {
     <span role="status" aria-live="polite">
       {delayed ? 'Still sending…' : 'Sending…'}
     </span>
+  )
+}
+
+function ChatExpirationNotice({
+  policy,
+  expiresAt,
+  onOpenSettings,
+}: {
+  policy: ExpirationPolicyDTO
+  expiresAt: string | null
+  onOpenSettings: () => void
+}) {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  const remaining = policy === 'never' ? null : countdownLabel(expiresAt, now)
+  const message =
+    policy === 'never'
+      ? 'Chat history stays until someone deletes it'
+      : `Messages disappear after ${policy === '24h' ? '24 hours' : '3 months'}${remaining ? ` · ${remaining}` : ''}`
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenSettings}
+      className="flex min-h-9 w-full shrink-0 items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50"
+      aria-label={`${message}. Open chat settings to change.`}
+      title={message}
+    >
+      <TimerReset className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">{message}</span>
+      <span className="shrink-0 font-medium text-primary">Change</span>
+    </button>
   )
 }
 
@@ -346,7 +400,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const pinnedRef = useRef(true) // list pinned to bottom until the user scrolls up
   const lastReadRef = useRef<number>(0)
-  const lastKbOverlapRef = useRef(-1) // last rounded keyboard overlap written to --gl-kb
+  const lastViewportHeightRef = useRef(-1)
   const mediaFileIdsRef = useRef(new Map<string, string>())
   const mediaPreviewUrlsRef = useRef(new Map<string, string>())
 
@@ -420,13 +474,8 @@ export function ChatView({ conversationId }: { conversationId: string }) {
     pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }, [])
 
-  // WhatsApp-style software keyboard: expose the keyboard overlap as --gl-kb so
-  // the chat shrinks to sit exactly on top of the keyboard. iOS Safari ignores
-  // interactive-widget=resizes-content, so visualViewport is the universal path.
-  // The viewport fires resize/scroll in bursts during the keyboard animation, so
-  // updates are coalesced per animation frame, --gl-kb is written only when the
-  // rounded overlap actually changes, and the window scroll is pinned to 0 while
-  // the keyboard is up so iOS cannot pan the whole app shell.
+  // Use the visible viewport directly so browsers that already resize 100dvh
+  // when the keyboard opens do not have the keyboard height subtracted twice.
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
@@ -434,9 +483,11 @@ export function ChatView({ conversationId }: { conversationId: string }) {
     let frame = 0
     const apply = () => {
       const overlap = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
-      if (overlap === lastKbOverlapRef.current) return
-      lastKbOverlapRef.current = overlap
-      root.style.setProperty('--gl-kb', `${overlap}px`)
+      const viewportHeight = Math.round(vv.height + vv.offsetTop)
+      if (viewportHeight !== lastViewportHeightRef.current) {
+        lastViewportHeightRef.current = viewportHeight
+        root.style.setProperty('--gl-visual-viewport-height', `${viewportHeight}px`)
+      }
       if (overlap > 0) window.scrollTo(0, 0) // keyboard opening — stop iOS window panning
       if (pinnedRef.current) scrollToBottom()
     }
@@ -454,7 +505,8 @@ export function ChatView({ conversationId }: { conversationId: string }) {
       vv.removeEventListener('resize', schedule)
       vv.removeEventListener('scroll', schedule)
       if (frame) cancelAnimationFrame(frame)
-      root.style.setProperty('--gl-kb', '0px')
+      root.style.removeProperty('--gl-visual-viewport-height')
+      lastViewportHeightRef.current = -1
     }
   }, [scrollToBottom])
 
@@ -892,6 +944,14 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         </Button>
       </div>
 
+      {!isGroup && (
+        <ChatExpirationNotice
+          policy={conv.expirationPolicy}
+          expiresAt={conv.expiresAt}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+      )}
+
       {/* Banners */}
       <div className="shrink-0 space-y-px">
         {blocked.me && (
@@ -1266,15 +1326,36 @@ export function ChatView({ conversationId }: { conversationId: string }) {
                   <h3 className="text-sm font-semibold flex items-center gap-1.5">
                     <TimerReset className="h-4 w-4 text-primary" /> How long this chat lives
                   </h3>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>Current:</span>
-                    <strong>{conv.expirationPolicy === 'never' ? 'Never' : conv.expirationPolicy === '24h' ? '24 hours' : '3 months'}</strong>
-                    {conv.expiresAt && <span>· {countdownLabel(conv.expiresAt)} remaining</span>}
+                  <div className="space-y-3 rounded-xl border bg-muted/20 p-3.5">
+                    <Select
+                      value={conv.expirationPolicy}
+                      onValueChange={(value) => {
+                        if (value === '24h' || value === '3months' || value === 'never') {
+                          void changeExpiration(value)
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-11 w-full rounded-lg bg-background" aria-label="Chat expiration">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="24h">24 hours</SelectItem>
+                        <SelectItem value="3months">3 months</SelectItem>
+                        <SelectItem value="never">Never expire</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                      {conv.expirationPolicy === '24h'
+                        ? 'Messages and media are removed 24 hours after this chat starts.'
+                        : conv.expirationPolicy === '3months'
+                          ? 'Messages and media are removed 3 months after this chat starts.'
+                          : 'This chat stays until someone deletes or ends it.'}
+                      {conv.expiresAt && ` ${countdownLabel(conv.expiresAt)} remaining.`}
+                    </p>
                   </div>
-                  <ExpirationPicker value={conv.expirationPolicy} onChange={changeExpiration} />
-                  <p className="text-[11px] text-muted-foreground">
-                    Shared setting — changes apply to both participants and are announced in realtime.
-                    Expired chats and their media are deleted by the server automatically.
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Shared setting — changes apply to both participants. Expired chats and their media
+                    are deleted automatically.
                   </p>
                 </section>
 
