@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type TouchEvent as ReactTouchEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion'
 import { WifiOff } from 'lucide-react'
@@ -27,6 +27,12 @@ import type { SessionResponse } from '@/lib/types'
 /** Tab index order drives the push/pop direction of the slide transition. */
 const TAB_ORDER: Tab[] = ['people', 'nearby', 'feed', 'stories', 'chats', 'profile']
 const PAGE_SPRING = { type: 'spring' as const, stiffness: 400, damping: 38, mass: 0.9 }
+const subscribeToDevice = () => () => {}
+
+function isIOSDevice() {
+  const isIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || isIPad
+}
 
 function Splash() {
   return (
@@ -40,6 +46,7 @@ function Splash() {
 export function AppRoot() {
   const queryClient = useQueryClient()
   const reduced = useReducedMotion() ?? false
+  const isIOS = useSyncExternalStore(subscribeToDevice, isIOSDevice, () => false)
   const {
     profile,
     profileChecked,
@@ -235,7 +242,7 @@ export function AppRoot() {
     setPrevTab(tab)
   }
 
-  const tabVariants: Variants = reduced
+  const tabVariants: Variants = reduced || isIOS
     ? { enter: { opacity: 0 }, center: { opacity: 1 }, exit: { opacity: 0 } }
     : {
         enter: (dir: number) => ({ opacity: 0, x: dir * 28 }),
@@ -244,7 +251,7 @@ export function AppRoot() {
       }
 
   // iOS-style page push for the chat view (slides up over the tab content).
-  const chatVariants: Variants = reduced
+  const chatVariants: Variants = reduced || isIOS
     ? { enter: { opacity: 0 }, center: { opacity: 1 }, exit: { opacity: 0 } }
     : {
         enter: { opacity: 0, y: 24, scale: 0.995 },
