@@ -85,6 +85,7 @@ export type ConversationSummary = {
     type: 'text' | 'image' | 'video' | 'system'
     text: string | null
     createdAt: string
+    deletedForEveryone?: boolean
   } | null
 }
 
@@ -99,6 +100,16 @@ export type MessageDTO = {
   mediaUrl: string | null
   createdAt: string
   clientId: string | null
+  editedAt?: string | null
+  deletedForEveryone?: boolean
+  replyTo?: {
+    id: string
+    senderPublicId: string
+    senderName: string | null
+    type: 'text' | 'image' | 'video' | 'system'
+    text: string | null
+    deletedForEveryone: boolean
+  } | null
   pending?: boolean
   failed?: boolean
 }

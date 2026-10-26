@@ -117,13 +117,18 @@ export async function toConversationSummary(
 
   const [lastMessage, unreadCount] = await Promise.all([
     db.message.findFirst({
-      where: { conversationId: conversation.id },
+      where: {
+        conversationId: conversation.id,
+        hiddenFor: { none: { userId: meId } },
+      },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, senderId: true, type: true, text: true, createdAt: true },
+      select: { id: true, senderId: true, type: true, text: true, createdAt: true, deletedForEveryoneAt: true },
     }),
     db.message.count({
       where: {
         conversationId: conversation.id,
+        deletedForEveryoneAt: null,
+        hiddenFor: { none: { userId: meId } },
         senderId: { in: others.map((o) => o.userId) },
         createdAt: myPart?.lastReadAt ? { gt: myPart.lastReadAt } : undefined,
       },
@@ -140,8 +145,9 @@ export async function toConversationSummary(
         id: lastMessage.id,
         senderPublicId: senderPart ? senderPart.user.publicId : '',
         type: lastMessage.type as 'text' | 'image' | 'video' | 'system',
-        text: lastMessage.text,
+        text: lastMessage.deletedForEveryoneAt ? null : lastMessage.text,
         createdAt: lastMessage.createdAt.toISOString(),
+        deletedForEveryone: Boolean(lastMessage.deletedForEveryoneAt),
       }
     : null
 
@@ -225,9 +231,19 @@ export function toMessageDTO(
     fileId: string | null
     clientId: string | null
     createdAt: Date
+    editedAt?: Date | null
+    deletedForEveryoneAt?: Date | null
   },
   senderPublicId: string,
-  senderName: string | null = null
+  senderName: string | null = null,
+  replyTo?: {
+    id: string
+    sender: { publicId: string; displayName: string }
+    type: string
+    text: string | null
+    deletedForEveryoneAt: Date | null
+    hiddenFor: { userId: string }[]
+  } | null
 ): MessageDTO {
   return {
     id: m.id,
@@ -239,6 +255,19 @@ export function toMessageDTO(
     mediaUrl: m.fileId ? `/api/files/${m.fileId}` : null,
     createdAt: m.createdAt.toISOString(),
     clientId: m.clientId,
+    editedAt: m.editedAt?.toISOString() ?? null,
+    deletedForEveryone: Boolean(m.deletedForEveryoneAt),
+    replyTo:
+      replyTo && replyTo.hiddenFor.length === 0
+        ? {
+            id: replyTo.id,
+            senderPublicId: replyTo.sender.publicId,
+            senderName: replyTo.sender.displayName,
+            type: replyTo.type as 'text' | 'image' | 'video' | 'system',
+            text: replyTo.text,
+            deletedForEveryone: Boolean(replyTo.deletedForEveryoneAt),
+          }
+        : null,
   }
 }
 

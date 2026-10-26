@@ -26,6 +26,8 @@ import {
   Trash2,
   Crown,
   Star,
+  Reply,
+  Pencil,
 } from 'lucide-react'
 import { api, ApiClientError } from '@/lib/client-api'
 import { getSocket, currentSocketToken } from '@/lib/socket-client'
@@ -49,7 +51,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,14 +72,16 @@ type ChatTarget = { publicId: string; displayName: string }
 type ChatComposerProps = {
   conversationId: string
   disabled?: boolean
-  onSendText: (value: string) => void
-  onSendMedia: (file: File, kind: 'image' | 'video') => void
+  replyTo: MessageDTO | null
+  onClearReply: () => void
+  onSendText: (value: string, replyToId?: string) => void
+  onSendMedia: (file: File, kind: 'image' | 'video', replyToId?: string) => void
 }
 
 // Isolated composer: owns its own text state so every keystroke re-renders only
 // this component — not the whole message list, dialogs and sheets above it. It
 // also owns the typing-emit throttle and the auto-grow height logic.
-function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedia }: ChatComposerProps) {
+function ChatComposer({ conversationId, disabled = false, replyTo, onClearReply, onSendText, onSendMedia }: ChatComposerProps) {
   const reduced = useReducedMotion() ?? false
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -126,8 +130,9 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
     if (!value) return
     sendingRef.current = true
     setSending(true)
-    onSendText(value)
+    onSendText(value, replyTo?.id)
     setText('')
+    if (replyTo) onClearReply()
     emitTyping(false)
     // Release the guard on the next macrotask so two Enters landing in the same
     // burst cannot send twice — the optimistic send itself stays synchronous.
@@ -141,6 +146,22 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
 
   return (
     <div className="shrink-0 border-t border-border/70 bg-background/90 p-2.5 pb-[max(10px,env(safe-area-inset-bottom))] backdrop-blur-xl">
+      {replyTo && (
+        <div className="mx-auto mb-2 flex max-w-4xl items-center gap-2 rounded-lg border-l-2 border-primary bg-muted/60 px-3 py-2">
+          <Reply className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold text-primary">
+              Replying to {replyTo.senderPublicId === 'me' ? 'yourself' : replyTo.senderName ?? 'message'}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {replyTo.deletedForEveryone ? 'This message was deleted' : replyTo.text ?? (replyTo.type === 'image' ? 'Photo' : 'Video')}
+            </p>
+          </div>
+          <button type="button" onClick={onClearReply} aria-label="Cancel reply" className="rounded p-1 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      )}
       <div className="mx-auto flex max-w-4xl items-end gap-1.5 sm:gap-2">
         <input
           ref={imageInputRef}
@@ -149,7 +170,9 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) onSendMedia(f, 'image')
+            if (f) {
+              onSendMedia(f, 'image', replyTo?.id)
+            }
             e.target.value = ''
           }}
         />
@@ -160,7 +183,9 @@ function ChatComposer({ conversationId, disabled = false, onSendText, onSendMedi
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) onSendMedia(f, 'video')
+            if (f) {
+              onSendMedia(f, 'video', replyTo?.id)
+            }
             e.target.value = ''
           }}
         />
@@ -235,6 +260,8 @@ type MessageBubbleProps = {
   reduced: boolean
   onLightbox: (m: MessageDTO) => void
   onRetry: (m: MessageDTO) => void
+  onOpenActions: (m: MessageDTO) => void
+  viewerPublicId: string | null
 }
 
 function DeliveryLabel({ createdAt }: { createdAt: string }) {
@@ -302,7 +329,19 @@ const MessageBubble = memo(function MessageBubble({
   reduced,
   onLightbox,
   onRetry,
+  onOpenActions,
+  viewerPublicId,
 }: MessageBubbleProps) {
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressFired = useRef(false)
+  const cancelHold = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+    holdTimer.current = null
+  }
+  useEffect(() => () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+  }, [])
+
   return (
     <motion.div
       layout="position"
@@ -319,8 +358,33 @@ const MessageBubble = memo(function MessageBubble({
       )}
       <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
         <div
+          id={`message-${m.id}`}
+          onPointerDown={() => {
+            if (m.pending || m.failed) return
+            longPressFired.current = false
+            cancelHold()
+            holdTimer.current = setTimeout(() => {
+              longPressFired.current = true
+              onOpenActions(m)
+            }, 500)
+          }}
+          onPointerUp={cancelHold}
+          onPointerLeave={cancelHold}
+          onPointerCancel={cancelHold}
+          onPointerMove={cancelHold}
+          onClickCapture={(event) => {
+            if (!longPressFired.current) return
+            event.preventDefault()
+            event.stopPropagation()
+            longPressFired.current = false
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            if (m.pending || m.failed) return
+            onOpenActions(m)
+          }}
           className={cn(
-            'max-w-[82%] sm:max-w-[70%] rounded-2xl px-3 py-2 text-sm',
+            'max-w-[82%] sm:max-w-[70%] rounded-2xl px-3 py-2 text-sm select-none',
             mine
               ? 'bg-primary text-primary-foreground rounded-br-md'
               : 'bg-secondary text-secondary-foreground rounded-bl-md',
@@ -332,8 +396,26 @@ const MessageBubble = memo(function MessageBubble({
               {m.senderName}
             </p>
           )}
-          {m.type === 'text' && <p className="whitespace-pre-wrap break-words">{m.text}</p>}
-          {m.type === 'image' && m.mediaUrl && (
+          {m.replyTo && (
+            <button
+              type="button"
+              className={cn('mb-1.5 block w-full rounded-md border-l-2 px-2 py-1 text-left', mine ? 'border-primary-foreground/50 bg-black/10' : 'border-primary bg-black/5')}
+              onClick={() => document.getElementById(`message-${m.replyTo?.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            >
+              <span className="block text-[10px] font-semibold">
+                {m.replyTo.senderPublicId === viewerPublicId ? 'You' : m.replyTo.senderName ?? m.replyTo.senderPublicId}
+              </span>
+              <span className="block truncate text-xs opacity-80">
+                {m.replyTo.deletedForEveryone
+                  ? 'This message was deleted'
+                  : m.replyTo.text ?? (m.replyTo.type === 'image' ? 'Photo' : m.replyTo.type === 'video' ? 'Video' : 'Message')}
+              </span>
+            </button>
+          )}
+          {m.deletedForEveryone ? (
+            <p className="italic opacity-75">This message was deleted</p>
+          ) : m.type === 'text' && <p className="whitespace-pre-wrap break-words">{m.text}</p>}
+          {!m.deletedForEveryone && m.type === 'image' && m.mediaUrl && (
             <button
               className="block -mx-1 -my-1"
               onClick={() => onLightbox(m)}
@@ -346,7 +428,7 @@ const MessageBubble = memo(function MessageBubble({
               />
             </button>
           )}
-          {m.type === 'video' && m.mediaUrl && (
+          {!m.deletedForEveryone && m.type === 'video' && m.mediaUrl && (
             <video
               src={m.mediaUrl}
               controls
@@ -357,6 +439,7 @@ const MessageBubble = memo(function MessageBubble({
           )}
           <div className={cn('flex items-center gap-1 mt-0.5 justify-end', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
             <span className="text-[10px]">{shortTime(m.createdAt)}</span>
+            {m.editedAt && !m.deletedForEveryone && <span className="text-[10px] italic">edited</span>}
             {mine &&
               (m.failed ? (
                 <button onClick={() => onRetry(m)} aria-label="Retry sending" title="Failed — tap to retry">
@@ -395,6 +478,14 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   const [inviteLoading, setInviteLoading] = useState(false)
   const [rotating, setRotating] = useState(false)
   const [favoriteBusy, setFavoriteBusy] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<MessageDTO | null>(null)
+  const [actionMessage, setActionMessage] = useState<MessageDTO | null>(null)
+  const [editingMessage, setEditingMessage] = useState<MessageDTO | null>(null)
+  const [editText, setEditText] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [deletingMode, setDeletingMode] = useState<'me' | 'everyone' | null>(null)
+  const [deletingMessage, setDeletingMessage] = useState<MessageDTO | null>(null)
+  const [deletingBusy, setDeletingBusy] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -556,7 +647,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   )
 
   const sendViaHttp = useCallback(
-    async (payload: { type: string; text?: string; fileId?: string | null }, clientId: string) => {
+    async (payload: { type: string; text?: string; fileId?: string | null; replyToId?: string }, clientId: string) => {
       try {
         await api.sendMessage(conversationId, { ...payload, clientId })
         // Keep the optimistic bubble visible until the refreshed history
@@ -572,6 +663,13 @@ export function ChatView({ conversationId }: { conversationId: string }) {
           mediaPreviewUrlsRef.current.delete(clientId)
           toast.error(err.message)
           queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
+        } else if (err instanceof ApiClientError && err.code === 'INVALID_REPLY') {
+          setPending((p) => p.filter((m) => m.clientId !== clientId))
+          mediaFileIdsRef.current.delete(clientId)
+          const previewUrl = mediaPreviewUrlsRef.current.get(clientId)
+          if (previewUrl) URL.revokeObjectURL(previewUrl)
+          mediaPreviewUrlsRef.current.delete(clientId)
+          toast.error(err.message)
         } else {
           markOptimistic(clientId, { pending: false, failed: true })
         }
@@ -581,7 +679,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   )
 
   const sendViaSocket = useCallback(
-    (payload: { type: string; text?: string; fileId?: string | null }, clientId: string) => {
+    (payload: { type: string; text?: string; fileId?: string | null; replyToId?: string }, clientId: string) => {
       const socket = getSocket(currentSocketToken())
       if (!socket.connected) {
         sendViaHttp(payload, clientId)
@@ -589,7 +687,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
       }
       socket.emit(
         'message:send',
-        { conversationId, clientId, type: payload.type, text: payload.text, fileId: payload.fileId ?? undefined },
+        { conversationId, clientId, type: payload.type, text: payload.text, fileId: payload.fileId ?? undefined, replyToId: payload.replyToId },
         (ack: { ok?: boolean; message?: MessageDTO; error?: string }) => {
           if (ack?.ok && ack.message) {
             // The local copy bridges the ack-to-query-refetch gap and is
@@ -605,6 +703,13 @@ export function ChatView({ conversationId }: { conversationId: string }) {
             toast.error('This conversation is closed and cannot accept messages.')
             queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
             queryClient.invalidateQueries({ queryKey: ['conversations'] })
+          } else if (ack?.error === 'invalid_reply') {
+            setPending((p) => p.filter((m) => m.clientId !== clientId))
+            mediaFileIdsRef.current.delete(clientId)
+            const previewUrl = mediaPreviewUrlsRef.current.get(clientId)
+            if (previewUrl) URL.revokeObjectURL(previewUrl)
+            mediaPreviewUrlsRef.current.delete(clientId)
+            toast.error('That message is no longer available to reply to.')
           } else {
             markOptimistic(clientId, { pending: false, failed: true })
           }
@@ -617,10 +722,21 @@ export function ChatView({ conversationId }: { conversationId: string }) {
   // The text arrives fully trimmed from ChatComposer (which also owns the
   // `sending` double-send guard) — this stays a pure optimistic fire-and-forget.
   const sendText = useCallback(
-    (value: string) => {
+    (value: string, replyToId?: string) => {
       const trimmed = value.trim()
       if (!trimmed) return
       const clientId = crypto.randomUUID()
+      const quoted = replyToId ? allMessages.find((message) => message.id === replyToId) : null
+      const replyTo = quoted
+        ? {
+            id: quoted.id,
+            senderPublicId: quoted.senderPublicId,
+            senderName: replyingTo?.id === quoted.id ? replyingTo.senderName ?? null : quoted.senderName ?? null,
+            type: quoted.type,
+            text: quoted.text,
+            deletedForEveryone: Boolean(quoted.deletedForEveryone),
+          }
+        : null
       optimisticAppend({
         id: clientId,
         conversationId,
@@ -631,20 +747,22 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         createdAt: new Date().toISOString(),
         clientId,
         pending: true,
+        replyTo,
       })
-      sendViaSocket({ type: 'text', text: trimmed }, clientId)
+      sendViaSocket({ type: 'text', text: trimmed, replyToId }, clientId)
     },
-    [conversationId, optimisticAppend, sendViaSocket]
+    [allMessages, conversationId, optimisticAppend, replyingTo, sendViaSocket]
   )
 
   const sendMedia = useCallback(
-    async (file: File, kind: 'image' | 'video') => {
+    async (file: File, kind: 'image' | 'video', replyToId?: string) => {
       const max = kind === 'image' ? 8 * 1024 * 1024 : 50 * 1024 * 1024
       if (file.size > max) {
         toast.error(`${kind === 'image' ? 'Images' : 'Videos'} must be under ${max / 1024 / 1024} MB.`)
         return
       }
       const clientId = crypto.randomUUID()
+      const quoted = replyToId ? allMessages.find((message) => message.id === replyToId) : null
       const previewUrl = URL.createObjectURL(file)
       mediaPreviewUrlsRef.current.set(clientId, previewUrl)
       optimisticAppend({
@@ -657,11 +775,22 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         createdAt: new Date().toISOString(),
         clientId,
         pending: true,
+        replyTo: quoted
+          ? {
+              id: quoted.id,
+              senderPublicId: quoted.senderPublicId,
+              senderName: replyingTo?.id === quoted.id ? replyingTo.senderName ?? null : quoted.senderName ?? null,
+              type: quoted.type,
+              text: quoted.text,
+              deletedForEveryone: Boolean(quoted.deletedForEveryone),
+            }
+          : null,
       })
       try {
         const up = await api.upload(file, kind)
         mediaFileIdsRef.current.set(clientId, up.id)
-        sendViaSocket({ type: kind, fileId: up.id }, clientId)
+        sendViaSocket({ type: kind, fileId: up.id, replyToId }, clientId)
+        if (replyingTo?.id === replyToId) setReplyingTo(null)
       } catch (err) {
         setPending((p) => p.filter((m) => m.clientId !== clientId))
         mediaFileIdsRef.current.delete(clientId)
@@ -671,7 +800,7 @@ export function ChatView({ conversationId }: { conversationId: string }) {
         toast.error(err instanceof ApiClientError ? err.message : 'Upload failed.')
       }
     },
-    [conversationId, optimisticAppend, sendViaSocket]
+    [allMessages, conversationId, optimisticAppend, replyingTo, sendViaSocket]
   )
 
   const retryMessage = useCallback(
@@ -698,6 +827,41 @@ export function ChatView({ conversationId }: { conversationId: string }) {
 
   // Stable callbacks handed down to every memoized MessageBubble.
   const openLightbox = useCallback((m: MessageDTO) => setLightbox(m), [])
+  const openMessageActions = useCallback((m: MessageDTO) => setActionMessage(m), [])
+
+  async function saveMessageEdit() {
+    if (!editingMessage || !editText.trim()) return
+    setSavingEdit(true)
+    try {
+      await api.editMessage(conversationId, editingMessage.id, editText)
+      setEditingMessage(null)
+      setEditText('')
+      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      toast.success('Message updated.')
+    } catch (err) {
+      toast.error(err instanceof ApiClientError ? err.message : 'Could not edit the message.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function confirmMessageDelete() {
+    if (!deletingMessage || !deletingMode) return
+    setDeletingBusy(true)
+    try {
+      await api.deleteMessage(conversationId, deletingMessage.id, deletingMode)
+      setDeletingMode(null)
+      setDeletingMessage(null)
+      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      toast.success(deletingMode === 'everyone' ? 'Message deleted for everyone.' : 'Message deleted for you.')
+    } catch (err) {
+      toast.error(err instanceof ApiClientError ? err.message : 'Could not delete the message.')
+    } finally {
+      setDeletingBusy(false)
+    }
+  }
 
   async function unblock() {
     if (!conv?.other) return
@@ -1037,6 +1201,8 @@ export function ChatView({ conversationId }: { conversationId: string }) {
               reduced={reduced}
               onLightbox={openLightbox}
               onRetry={retryMessage}
+              onOpenActions={openMessageActions}
+              viewerPublicId={myPublicId ?? null}
             />
           )
         })}
@@ -1081,6 +1247,8 @@ export function ChatView({ conversationId }: { conversationId: string }) {
       <ChatComposer
         conversationId={conversationId}
         disabled={!canSend}
+        replyTo={replyingTo}
+        onClearReply={() => setReplyingTo(null)}
         onSendText={sendText}
         onSendMedia={sendMedia}
       />
@@ -1101,6 +1269,147 @@ export function ChatView({ conversationId }: { conversationId: string }) {
           </button>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!actionMessage} onOpenChange={(open) => !open && setActionMessage(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogTitle>Message options</DialogTitle>
+          <DialogDescription className="sr-only">Choose an action for this message.</DialogDescription>
+          {actionMessage && (
+            <div className="grid gap-2">
+              {!actionMessage.deletedForEveryone && (
+                <Button
+                  variant="ghost"
+                  className="justify-start"
+                  onClick={() => {
+                    setReplyingTo({
+                      ...actionMessage,
+                      senderName:
+                        actionMessage.senderName ??
+                        (actionMessage.senderPublicId === myPublicId || actionMessage.senderPublicId === 'me'
+                          ? 'You'
+                          : isGroup
+                            ? actionMessage.senderPublicId
+                            : displayName),
+                    })
+                    setActionMessage(null)
+                  }}
+                  disabled={actionMessage.pending}
+                >
+                  <Reply className="mr-2 h-4 w-4" aria-hidden /> Reply
+                </Button>
+              )}
+              {actionMessage.senderPublicId === myPublicId &&
+                actionMessage.type === 'text' &&
+                !actionMessage.deletedForEveryone && (
+                  <Button
+                    variant="ghost"
+                    className="justify-start"
+                    onClick={() => {
+                      setEditText(actionMessage.text ?? '')
+                      setEditingMessage(actionMessage)
+                      setActionMessage(null)
+                    }}
+                    disabled={actionMessage.pending}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" aria-hidden /> Edit
+                  </Button>
+                )}
+              <Button
+                variant="ghost"
+                className="justify-start text-destructive hover:text-destructive"
+                onClick={() => {
+                  setDeletingMessage(actionMessage)
+                  setDeletingMode('me')
+                  setActionMessage(null)
+                }}
+                disabled={actionMessage.pending}
+              >
+                <Trash2 className="mr-2 h-4 w-4" aria-hidden /> Delete for me
+              </Button>
+              {actionMessage.senderPublicId === myPublicId && !actionMessage.deletedForEveryone && (
+                <Button
+                  variant="ghost"
+                  className="justify-start text-destructive hover:text-destructive"
+                  onClick={() => {
+                    setDeletingMessage(actionMessage)
+                    setDeletingMode('everyone')
+                    setActionMessage(null)
+                  }}
+                  disabled={actionMessage.pending}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" aria-hidden /> Delete for everyone
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!editingMessage}
+        onOpenChange={(open) => {
+          if (!open && !savingEdit) {
+            setEditingMessage(null)
+            setEditText('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogTitle>Edit message</DialogTitle>
+          <DialogDescription>Update the text of your sent message.</DialogDescription>
+          <Textarea
+            value={editText}
+            onChange={(event) => setEditText(event.target.value)}
+            maxLength={2000}
+            rows={4}
+            autoFocus
+            aria-label="Edit message text"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setEditingMessage(null)} disabled={savingEdit}>Cancel</Button>
+            <Button onClick={() => void saveMessageEdit()} disabled={!editText.trim() || savingEdit}>
+              {savingEdit ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deletingMode !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingBusy) {
+            setDeletingMode(null)
+            setDeletingMessage(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deletingMode === 'everyone' ? 'Delete this message for everyone?' : 'Delete this message for you?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingMode === 'everyone'
+                ? 'The message will be replaced with a deleted notice for all chat members.'
+                : 'The message will be removed from your chat. Other members will still see it.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault()
+                void confirmMessageDelete()
+              }}
+              disabled={deletingBusy}
+            >
+              {deletingBusy ? 'Deleting…' : 'Delete message'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Settings sheet */}
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>

@@ -15,7 +15,8 @@ import { GroupCreateDialog } from '@/components/screens/group-create-dialog'
 import type { ConversationSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-function previewText(t: { type: string; text: string | null }): string {
+function previewText(t: { type: string; text: string | null; deletedForEveryone?: boolean }): string {
+  if (t.deletedForEveryone) return 'This message was deleted'
   if (t.type === 'image') return t.text ? `Photo · ${t.text}` : 'Photo'
   if (t.type === 'video') return t.text ? `Video · ${t.text}` : 'Video'
   return t.text ?? ''

@@ -188,10 +188,22 @@ export const api = {
       `/api/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`
     ),
 
-  sendMessage: (id: string, payload: { type: string; text?: string; fileId?: string | null; clientId?: string }) =>
+  sendMessage: (id: string, payload: { type: string; text?: string; fileId?: string | null; clientId?: string; replyToId?: string }) =>
     request<{ message: MessageDTO }>(`/api/conversations/${id}/messages`, {
       method: 'POST',
       body: json(payload),
+    }),
+
+  editMessage: (conversationId: string, messageId: string, text: string) =>
+    request<{ messageId: string; text: string; editedAt: string | null }>(
+      `/api/conversations/${conversationId}/messages/${messageId}`,
+      { method: 'PATCH', body: json({ text }) }
+    ),
+
+  deleteMessage: (conversationId: string, messageId: string, mode: 'me' | 'everyone') =>
+    request<{ deleted: boolean }>(`/api/conversations/${conversationId}/messages/${messageId}`, {
+      method: 'DELETE',
+      body: json({ mode }),
     }),
 
   markRead: (id: string) =>

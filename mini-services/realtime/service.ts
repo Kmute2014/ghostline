@@ -435,7 +435,7 @@ io.on('connection', guard(async (socket) => {
     'message:send',
     guard(
     async (
-      data: { conversationId?: string; clientId?: string; type?: string; text?: string; fileId?: string },
+      data: { conversationId?: string; clientId?: string; type?: string; text?: string; fileId?: string; replyToId?: string },
       ack?: (r: unknown) => void
     ) => {
       try {
@@ -443,6 +443,7 @@ io.on('connection', guard(async (socket) => {
         const clientId = typeof data?.clientId === 'string' ? data.clientId.slice(0, 64) : null
         const text = typeof data?.text === 'string' ? data.text.slice(0, 2000).trim() : ''
         const fileId = data?.fileId ? String(data.fileId) : null
+        const replyToId = typeof data?.replyToId === 'string' ? data.replyToId : null
         const type = ['text', 'image', 'video'].includes(String(data?.type)) ? String(data.type) : 'text'
 
         const participation = await db.conversationParticipant.findFirst({
@@ -472,6 +473,18 @@ io.on('connection', guard(async (socket) => {
         }
 
         if (type === 'text' && !text) return ack?.({ ok: false, error: 'empty' })
+        const replyTo = replyToId
+          ? await db.message.findFirst({
+              where: {
+                id: replyToId,
+                conversationId,
+                deletedForEveryoneAt: null,
+                hiddenFor: { none: { userId } },
+              },
+              include: { sender: { select: { publicId: true, displayName: true } } },
+            })
+          : null
+        if (replyToId && !replyTo) return ack?.({ ok: false, error: 'invalid_reply' })
         if (type !== 'text') {
           if (!fileId) return ack?.({ ok: false, error: 'media_required' })
           const file = await db.file.findUnique({ where: { id: fileId } })
@@ -479,7 +492,7 @@ io.on('connection', guard(async (socket) => {
         }
 
         const message = await db.message.create({
-          data: { conversationId, senderId: userId, type, text: text || null, fileId, clientId },
+          data: { conversationId, senderId: userId, type, text: text || null, fileId, clientId, replyToId },
         })
         await Promise.all([
           db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }),
@@ -499,6 +512,18 @@ io.on('connection', guard(async (socket) => {
           mediaUrl: message.fileId ? `/api/files/${message.fileId}` : null,
           createdAt: message.createdAt.toISOString(),
           clientId: message.clientId,
+          editedAt: null,
+          deletedForEveryone: false,
+          replyTo: replyTo
+            ? {
+                id: replyTo.id,
+                senderPublicId: replyTo.sender.publicId,
+                senderName: replyTo.sender.displayName,
+                type: replyTo.type,
+                text: replyTo.text,
+                deletedForEveryone: false,
+              }
+            : null,
         }
         io.to(`conv:${conversationId}`).emit('message:new', payload)
         // Offline participants (no live socket) get a Web Push notification.

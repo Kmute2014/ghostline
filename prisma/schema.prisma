@@ -32,6 +32,7 @@ model Profile {
   files                File[]
   location             Location?
   messages             Message[]
+  hiddenMessages       MessageHidden[]
   posts                Post[]
   postComments         PostComment[]
   postVotes            PostVote[]
@@ -105,19 +106,38 @@ model ConversationParticipant {
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  conversationId String
-  senderId       String
-  type           String       @default("text")
-  text           String?
-  fileId         String?
-  clientId       String?
-  createdAt      DateTime     @default(now())
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         Profile      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  id                    String       @id @default(cuid())
+  conversationId        String
+  senderId              String
+  type                  String       @default("text")
+  text                  String?
+  fileId                String?
+  clientId              String?
+  replyToId             String?
+  editedAt              DateTime?
+  deletedForEveryoneAt  DateTime?
+  createdAt             DateTime     @default(now())
+  conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender                Profile      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo               Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies               Message[]    @relation("MessageReplies")
+  hiddenFor             MessageHidden[]
 
   @@index([conversationId, createdAt])
   @@index([senderId])
+  @@index([replyToId])
+}
+
+model MessageHidden {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
 }
 
 model Contact {

@@ -132,6 +132,12 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       }
     }
 
+    const onMessageChanged = (data: { conversationId?: string }) => {
+      if (!data?.conversationId) return
+      queryClient.invalidateQueries({ queryKey: ['messages', data.conversationId] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    }
+
     const onTyping = (data: { conversationId?: string; typing?: boolean }) => {
       if (!data?.conversationId) return
       // Typing events don't carry identity of sender publicly; treat as "them"
@@ -168,6 +174,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
     socket.on('conversation:deleted', onConversationDeleted)
     socket.on('presence:update', onPresenceUpdate)
     socket.on('conversation:read', onRead)
+    socket.on('message:changed', onMessageChanged)
     socket.on('typing', onTyping)
     socket.on('feed:update', onFeedUpdate)
     socket.on('buzz:notification', onBuzzNotification)
@@ -188,6 +195,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       socket.off('conversation:deleted', onConversationDeleted)
       socket.off('presence:update', onPresenceUpdate)
       socket.off('conversation:read', onRead)
+      socket.off('message:changed', onMessageChanged)
       socket.off('typing', onTyping)
       socket.off('feed:update', onFeedUpdate)
       socket.off('buzz:notification', onBuzzNotification)
