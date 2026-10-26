@@ -248,23 +248,38 @@ async function pushConversationNewToOffline(
  * blocked by them) never receives their presence events — blocks stop
  * discovery, not just messaging.
  */
-async function emitPresence(publicId: string, online: boolean, lastSeenAt: string) {
+async function emitPresence(userId: string, publicId: string, online: boolean, lastSeenAt: string) {
   const payload = { publicId, online, lastSeenAt }
-  const target = await db.profile
-    .findUnique({ where: { publicId }, select: { id: true } })
-    .catch(() => null)
-  if (!target) return
-  const blocks = await db.blockedUser
-    .findMany({
-      where: { OR: [{ blockerId: target.id }, { blockedId: target.id }] },
+
+  // The caller already knows the internal user ID, so do not query Profile by
+  // publicId for every connect/disconnect/sweep event.
+  let blocks: { blockerId: string; blockedId: string }[]
+  try {
+    blocks = await db.blockedUser.findMany({
+      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
       select: { blockerId: true, blockedId: true },
     })
-    .catch(() => [] as { blockerId: string; blockedId: string }[])
+  } catch (err) {
+    // Fail closed: never broadcast presence if block privacy cannot be checked.
+    console.error('[rt] presence broadcast skipped; block lookup failed:', err)
+    return
+  }
+
   const blockedIds = new Set<string>()
-  for (const b of blocks) blockedIds.add(b.blockerId === target.id ? b.blockedId : b.blockerId)
-  for (const [uid, sockets] of socketsByUser) {
-    if (uid === target.id || blockedIds.has(uid)) continue
-    for (const sid of sockets) io.to(sid).emit('presence:update', payload)
+  for (const block of blocks) {
+    blockedIds.add(block.blockerId === userId ? block.blockedId : block.blockerId)
+  }
+
+  // Broadcast to user rooms rather than emitting separately to every socket.
+  // Socket.IO treats an array of rooms as a union, so users with multiple tabs
+  // receive one event per socket while we avoid the nested per-socket emit loop.
+  const recipientRooms: string[] = []
+  for (const recipientId of socketsByUser.keys()) {
+    if (recipientId === userId || blockedIds.has(recipientId)) continue
+    recipientRooms.push(userRoom(recipientId))
+  }
+  if (recipientRooms.length > 0) {
+    io.to(recipientRooms).emit('presence:update', payload)
   }
 }
 
@@ -286,7 +301,7 @@ async function setOnline(userId: string, online: boolean) {
     include: { user: { select: { publicId: true, displayName: true, showInPeople: true } } },
   }).catch(() => null)
   if (presence) {
-    await emitPresence(presence.user.publicId, online, presence.lastSeenAt.toISOString())
+    await emitPresence(userId, presence.user.publicId, online, presence.lastSeenAt.toISOString())
     if (online && !previous?.isOnline && presence.user.showInPeople) {
       void notifyPeopleOnline(userId, presence.user.publicId, presence.user.displayName).catch((err) => {
         console.error('[push] online notification failed:', err)
@@ -688,7 +703,7 @@ async function sweepPresence() {
     await db.presence
       .update({ where: { userId: p.userId }, data: { isOnline: false, lastSeenAt: new Date() } })
       .catch(() => undefined)
-    await emitPresence(p.user.publicId, false, new Date().toISOString())
+    await emitPresence(p.userId, p.user.publicId, false, new Date().toISOString())
   }
 }
 
