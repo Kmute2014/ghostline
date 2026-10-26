@@ -25,7 +25,16 @@ type AuthorRow = {
   presence: { isOnline: boolean; lastHeartbeatAt: Date } | null
 }
 
-export function toPostAuthor(a: AuthorRow): PostAuthorDTO {
+export function toPostAuthor(a: AuthorRow, isAnonymous = false): PostAuthorDTO {
+  if (isAnonymous) {
+    return {
+      publicId: 'anonymous',
+      displayName: 'Anonymous',
+      avatarUrl: null,
+      online: false,
+      isAnonymous: true,
+    }
+  }
   const online = Boolean(
     a.presence?.isOnline && a.presence.lastHeartbeatAt.getTime() > Date.now() - ONLINE_GRACE_MS
   )
@@ -34,6 +43,7 @@ export function toPostAuthor(a: AuthorRow): PostAuthorDTO {
     displayName: a.displayName,
     avatarUrl: avatarUrlFor(a.avatarFileId),
     online,
+    isAnonymous: false,
   }
 }
 
@@ -44,6 +54,7 @@ type PostRow = {
   commentCount: number
   createdAt: Date
   authorId: string
+  isAnonymous: boolean
   author: AuthorRow
   votes?: { value: number }[]
 }
@@ -53,7 +64,7 @@ export function toPostDTO(post: PostRow, myId: string): PostDTO {
   return {
     id: post.id,
     text: post.text,
-    author: toPostAuthor(post.author),
+    author: toPostAuthor(post.author, post.isAnonymous),
     voteScore: post.voteScore,
     commentCount: post.commentCount,
     myVote: my === 1 ? 1 : my === -1 ? -1 : 0,
@@ -67,6 +78,7 @@ type CommentRow = {
   text: string
   createdAt: Date
   authorId: string
+  isAnonymous: boolean
   author: AuthorRow
 }
 
@@ -74,7 +86,7 @@ export function toCommentDTO(c: CommentRow, myId: string): PostCommentDTO {
   return {
     id: c.id,
     text: c.text,
-    author: toPostAuthor(c.author),
+    author: toPostAuthor(c.author, c.isAnonymous),
     isOwn: c.authorId === myId,
     createdAt: c.createdAt.toISOString(),
   }

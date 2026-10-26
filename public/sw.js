@@ -2,12 +2,12 @@
  * Hushly Service Worker
  * ------------------------
  * 1. PWA app-shell caching: instant cold starts, graceful offline fallback.
- * 2. Web Push: shows notifications for messages received while the app is
- *    closed or in the background (server only pushes when no live socket).
+ * 2. Web Push: shows notifications for messages and Buzz activity received
+ *    while the app is closed or in the background (server pushes when offline).
  * 3. notificationclick: focuses the running app or opens a deep link.
  */
 
-const VERSION = 'hushly-v3'
+const VERSION = 'hushly-v4'
 const SHELL_CACHE = `${VERSION}-shell`
 const STATIC_CACHE = `${VERSION}-static`
 
@@ -146,7 +146,7 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of clientList) {
         // Focus the app if it is open; carry the deep link over.
         if ('focus' in client) {
-          client.postMessage({ type: 'open-chat', url: target })
+          client.postMessage({ type: 'open-notification', url: target })
           await client.focus()
           return
         }

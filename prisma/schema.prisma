@@ -168,6 +168,7 @@ model Post {
   id           String        @id @default(cuid())
   authorId     String
   text         String
+  isAnonymous  Boolean       @default(false)
   voteScore    Int           @default(0)
   commentCount Int           @default(0)
   createdAt    DateTime      @default(now())
@@ -198,9 +199,10 @@ model PostComment {
   postId    String
   authorId  String
   text      String
-  createdAt DateTime @default(now())
-  author    Profile  @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  isAnonymous Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  author       Profile  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post         Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId, createdAt])
   @@index([authorId])

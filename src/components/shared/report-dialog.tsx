@@ -30,6 +30,7 @@ export function ReportDialog({
   open,
   onOpenChange,
   publicId,
+  postId,
   conversationId,
   label,
   onBlockedOptional,
@@ -37,6 +38,7 @@ export function ReportDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   publicId?: string
+  postId?: string
   conversationId?: string
   label?: string
   /** Optionally also block in the same flow */
@@ -50,7 +52,7 @@ export function ReportDialog({
   async function submit() {
     setBusy(true)
     try {
-      const res = await api.report({ publicId, conversationId, reason, details: details || undefined })
+      const res = await api.report({ publicId, postId, conversationId, reason, details: details || undefined })
       if (alsoBlock && publicId) {
         await api.blockUser(publicId).catch(() => undefined)
         onBlockedOptional?.()
@@ -104,7 +106,7 @@ export function ReportDialog({
           />
         </div>
 
-        {publicId && (
+        {publicId && !postId && (
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

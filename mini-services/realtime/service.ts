@@ -591,6 +591,11 @@ function handleInternal(req: IncomingMessage, res: ServerResponse) {
         if (p.conversationId) {
           void pushConversationNewToOffline(p.conversationId, userIds.map(String), p.byPublicId ?? null)
         }
+      } else if (event === 'buzz:notification' && payload && typeof payload === 'object') {
+        const p = payload as PushPayload
+        for (const userId of userIds.map(String)) {
+          if (!hasLiveSockets(userId)) void sendPushToUser(userId, p)
+        }
       }
       res.writeHead(200).end(JSON.stringify({ ok: true }))
     } catch {

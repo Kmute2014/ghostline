@@ -9,13 +9,14 @@ import type { ConversationSummary, MessageDTO } from '@/lib/types'
 
 /**
  * Wires the realtime socket to the query cache and UI:
- * presence (People directory), incoming messages, read receipts, typing.
+ * presence, incoming messages, Buzz activity, read receipts, and typing.
  */
 export function useRealtime(socketToken: string | null | undefined, myPublicId: string | null) {
   const queryClient = useQueryClient()
   const activeConversationId = useAppStore((s) => s.activeConversationId)
   const closeConversation = useAppStore((s) => s.closeConversation)
   const setSocketConnected = useAppStore((s) => s.setSocketConnected)
+  const setTab = useAppStore((s) => s.setTab)
   const setTyping = useAppStore((s) => s.setTyping)
 
   const activeRef = useRef(activeConversationId)
@@ -145,6 +146,20 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       }
     }
 
+    const onBuzzNotification = (data: { title?: string; body?: string; postId?: string }) => {
+      if (data?.postId) {
+        queryClient.invalidateQueries({ queryKey: ['posts'] })
+        queryClient.invalidateQueries({ queryKey: ['post-thread', data.postId] })
+      }
+      toast(data?.title ?? 'Buzz', {
+        description: data?.body ?? 'There is new activity on a post you contributed to.',
+        action: {
+          label: 'Open Buzz',
+          onClick: () => setTab('feed'),
+        },
+      })
+    }
+
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
     socket.on('message:new', onMessageNew)
@@ -155,6 +170,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
     socket.on('conversation:read', onRead)
     socket.on('typing', onTyping)
     socket.on('feed:update', onFeedUpdate)
+    socket.on('buzz:notification', onBuzzNotification)
     if (socket.connected) onConnect()
 
     // Heartbeat keeps server-side presence fresh even without traffic
@@ -174,6 +190,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       socket.off('conversation:read', onRead)
       socket.off('typing', onTyping)
       socket.off('feed:update', onFeedUpdate)
+      socket.off('buzz:notification', onBuzzNotification)
     }
-  }, [socketToken, myPublicId, queryClient, closeConversation, setSocketConnected, setTyping])
+  }, [socketToken, myPublicId, queryClient, closeConversation, setSocketConnected, setTab, setTyping])
 }

@@ -152,6 +152,7 @@ export type PostAuthorDTO = {
   displayName: string
   avatarUrl: string | null
   online: boolean
+  isAnonymous: boolean
 }
 
 export type PostDTO = {

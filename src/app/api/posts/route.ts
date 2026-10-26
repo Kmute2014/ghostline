@@ -58,13 +58,14 @@ export const POST = handle(async (req: NextRequest) => {
 
   const body = await req.json().catch(() => ({}))
   const text = typeof body?.text === 'string' ? body.text.trim() : ''
+  const isAnonymous = body?.isAnonymous === true
   if (!text) throw badRequest('Say something first — the post cannot be empty.', 'EMPTY_POST')
   if (text.length > POST_MAX_LEN) {
     throw badRequest(`Posts are limited to ${POST_MAX_LEN} characters.`, 'POST_TOO_LONG')
   }
 
   const post = await db.post.create({
-    data: { authorId: meId, text },
+    data: { authorId: meId, text, isAnonymous },
     include: { author: { include: { presence: true } }, votes: { where: { userId: meId }, select: { value: true } } },
   })
 

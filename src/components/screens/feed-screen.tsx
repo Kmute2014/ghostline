@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,7 +54,7 @@ type DeleteTarget =
   | { type: 'comment'; postId: string; commentId: string }
   | null
 
-type ReportTarget = { publicId: string; label: string } | null
+type ReportTarget = { publicId?: string; postId?: string; label: string } | null
 
 const spring = { type: 'spring' as const, stiffness: 400, damping: 34 }
 
@@ -64,6 +65,7 @@ export function FeedScreen() {
 
   const [sort, setSort] = useState<Sort>('hot')
   const [text, setText] = useState('')
+  const [anonymousPost, setAnonymousPost] = useState(false)
   const [posting, setPosting] = useState(false)
   const [voteBusyId, setVoteBusyId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -114,7 +116,7 @@ export function FeedScreen() {
     if (!t || posting) return
     setPosting(true)
     try {
-      const res = await api.createPost(t)
+      const res = await api.createPost(t, anonymousPost)
       setText('')
       // Prepend to both cached sorts (hot re-ranks on the next refetch).
       for (const s of ['hot', 'new'] as const) {
@@ -215,10 +217,10 @@ export function FeedScreen() {
         <CardContent className="p-3.5 space-y-2.5">
           <div className="flex items-start gap-2.5">
             <UserAvatar
-              displayName={profile?.displayName ?? 'You'}
-              publicId={myPublicId ?? 'me'}
-              avatarUrl={profile?.avatarUrl ?? null}
-              online
+              displayName={anonymousPost ? 'Anonymous' : profile?.displayName ?? 'You'}
+              publicId={anonymousPost ? 'anonymous' : myPublicId ?? 'me'}
+              avatarUrl={anonymousPost ? null : profile?.avatarUrl ?? null}
+              online={anonymousPost ? undefined : true}
               size={30}
             />
             <Textarea
@@ -231,10 +233,16 @@ export function FeedScreen() {
               className="min-h-[52px] resize-none border-0 p-1 focus-visible:ring-0 shadow-none text-sm"
             />
           </div>
-          <div className="flex items-center justify-between pl-[42px]">
-            <span className={cn('text-[11px] tabular-nums', text.length > 280 ? 'text-amber-500' : 'text-muted-foreground')}>
-              {text.length}/300
-            </span>
+          <div className="flex items-center justify-between gap-2 pl-[42px]">
+            <div className="flex items-center gap-2">
+              <span className={cn('text-[11px] tabular-nums', text.length > 280 ? 'text-amber-500' : 'text-muted-foreground')}>
+                {text.length}/300
+              </span>
+              <label htmlFor="anonymous-post" className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <Switch id="anonymous-post" checked={anonymousPost} onCheckedChange={setAnonymousPost} />
+                Post anonymously
+              </label>
+            </div>
             <Button size="sm" onClick={() => void publish()} disabled={!text.trim() || posting}>
               {posting ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -285,7 +293,11 @@ export function FeedScreen() {
                 onVote={vote}
                 onDeletePost={(post) => setConfirmDelete({ type: 'post', postId: post.id })}
                 onReport={(post) =>
-                  setReportTarget({ publicId: post.author.publicId, label: post.author.displayName })
+                  setReportTarget(
+                    post.author.isAnonymous
+                      ? { postId: post.id, label: post.author.displayName }
+                      : { publicId: post.author.publicId, label: post.author.displayName }
+                  )
                 }
                 onCountChange={onCountChange}
                 onAskDeleteComment={(postId, commentId) =>
@@ -335,6 +347,7 @@ export function FeedScreen() {
         open={!!reportTarget}
         onOpenChange={(o) => !o && setReportTarget(null)}
         publicId={reportTarget?.publicId}
+        postId={reportTarget?.postId}
         label={reportTarget ? `the post by ${reportTarget.label}` : undefined}
       />
     </div>
@@ -365,6 +378,7 @@ const PostCard = memo(function PostCard({
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
+  const [anonymousComment, setAnonymousComment] = useState(false)
   const [sending, setSending] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -380,7 +394,7 @@ const PostCard = memo(function PostCard({
     if (!t || sending) return
     setSending(true)
     try {
-      const res = await api.commentPost(post.id, t)
+      const res = await api.commentPost(post.id, t, anonymousComment)
       setText('')
       if (inputRef.current) inputRef.current.style.height = 'auto'
       queryClient.setQueryData<{ post: PostDTO; comments: PostCommentDTO[] }>(
@@ -556,36 +570,46 @@ const PostCard = memo(function PostCard({
               )}
 
               {/* Comment composer */}
-              <div className="flex items-end gap-1.5 p-2.5 pt-1.5">
-                <Textarea
-                  ref={inputRef}
-                  value={text}
-                  onChange={(e) => setText(e.target.value.slice(0, 300))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      void submitComment()
-                    }
-                  }}
-                  placeholder="Add a comment…"
-                  aria-label="Write a comment"
-                  rows={1}
-                  maxLength={300}
-                  className="min-h-[36px] max-h-24 resize-none field-sizing-content text-xs"
-                />
-                <Button
-                  size="icon"
-                  className="h-9 w-9 shrink-0"
-                  onClick={() => void submitComment()}
-                  disabled={!text.trim() || sending}
-                  aria-label="Send comment"
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Send className="h-4 w-4" aria-hidden />
-                  )}
-                </Button>
+              <div className="p-2.5 pt-1.5 space-y-1.5">
+                <div className="flex items-end gap-1.5">
+                  <Textarea
+                    ref={inputRef}
+                    value={text}
+                    onChange={(e) => setText(e.target.value.slice(0, 300))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void submitComment()
+                      }
+                    }}
+                    placeholder="Add a comment…"
+                    aria-label="Write a comment"
+                    rows={1}
+                    maxLength={300}
+                    className="min-h-[36px] max-h-24 resize-none field-sizing-content text-xs"
+                  />
+                  <Button
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => void submitComment()}
+                    disabled={!text.trim() || sending}
+                    aria-label="Send comment"
+                  >
+                    {sending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Send className="h-4 w-4" aria-hidden />
+                    )}
+                  </Button>
+                </div>
+                <label htmlFor={`anonymous-comment-${post.id}`} className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
+                  <Switch
+                    id={`anonymous-comment-${post.id}`}
+                    checked={anonymousComment}
+                    onCheckedChange={setAnonymousComment}
+                  />
+                  Comment anonymously
+                </label>
               </div>
             </div>
           )}

@@ -4,6 +4,7 @@ import { getAuth } from '@/lib/session'
 import { db } from '@/lib/db'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
 import { recomputeVoteScore } from '@/lib/posts'
+import { notifyUsers } from '@/lib/notify'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,11 +31,19 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
     throw badRequest('Vote must be 1 (like), -1 (dislike) or 0 (clear).', 'INVALID_VOTE')
   }
 
-  const post = await db.post.findUnique({ where: { id }, select: { id: true, authorId: true } })
+  const post = await db.post.findUnique({
+    where: { id },
+    select: { id: true, authorId: true },
+  })
   if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
   if (post.authorId === meId) {
     throw badRequest('You cannot vote on your own post.', 'SELF_VOTE')
   }
+
+  const previousVote = await db.postVote.findUnique({
+    where: { postId_userId: { postId: id, userId: meId } },
+    select: { value: true },
+  })
 
   if (value === 0) {
     await db.postVote.deleteMany({ where: { postId: id, userId: meId } })
@@ -48,5 +57,14 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
   }
 
   const voteScore = await recomputeVoteScore(id)
+  if (value !== 0 && previousVote?.value !== value) {
+    await notifyUsers([post.authorId], 'buzz:notification', {
+      title: 'Buzz',
+      body: 'Someone voted on your post.',
+      tag: `buzz-post-${id}`,
+      url: '/?tab=feed',
+      postId: id,
+    })
+  }
   return ok({ voteScore, myVote: value })
 })

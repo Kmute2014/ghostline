@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  *     "Install app" action (Chrome/Edge/Android).
  *  3. Exposes platform facts (standalone mode, iOS) for install hints.
  *  4. Handles notification deep links: taps on push notifications either open
- *     `/?chat=<id>` (cold start) or postMessage the running app.
+ *     a chat or switch to Buzz, on cold start or in the running app.
  */
 
 type BeforeInstallPromptEvent = Event & {
@@ -113,16 +113,21 @@ export function usePwaRuntime(onDeepLink?: (path: string) => void) {
 
     const params = new URLSearchParams(window.location.search)
     const chat = params.get('chat')
-    if (chat) {
+    const tab = params.get('tab')
+    if (chat || tab === 'feed') {
       window.history.replaceState(null, '', window.location.pathname)
-      deepLinkRef.current?.(`/?chat=${encodeURIComponent(chat)}`)
+      deepLinkRef.current?.(chat ? `/?chat=${encodeURIComponent(chat)}` : '/?tab=feed')
     }
 
     const onMessage = (event: MessageEvent) => {
       const data = event.data as { type?: string; url?: string } | null
-      if (data?.type === 'open-chat' && typeof data.url === 'string') {
+      if (
+        (data?.type === 'open-chat' || data?.type === 'open-notification') &&
+        typeof data.url === 'string'
+      ) {
         const match = data.url.match(/[?&]chat=([^&]+)/)
         if (match) deepLinkRef.current?.(`/?chat=${decodeURIComponent(match[1])}`)
+        else if (/[?&]tab=feed(?:&|$)/.test(data.url)) deepLinkRef.current?.('/?tab=feed')
       }
     }
     navigator.serviceWorker?.addEventListener('message', onMessage)

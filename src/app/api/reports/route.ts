@@ -27,6 +27,14 @@ export const POST = handle(async (req: NextRequest) => {
     if (!target) throw badRequest('Reported user not found.', 'USER_NOT_FOUND')
     reportedUserId = target.id
   }
+  if (body?.postId) {
+    const post = await db.post.findUnique({
+      where: { id: String(body.postId) },
+      select: { authorId: true },
+    })
+    if (!post) throw badRequest('Reported post not found.', 'POST_NOT_FOUND')
+    reportedUserId = post.authorId
+  }
   if (body?.conversationId) {
     const conv = await db.conversation.findUnique({ where: { id: String(body.conversationId) } })
     if (!conv) throw badRequest('Reported conversation not found.', 'CONVERSATION_NOT_FOUND')

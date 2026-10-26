@@ -52,6 +52,7 @@ export function AppRoot() {
     profileChecked,
     setProfile,
     tab,
+    setTab,
     activeConversationId,
     closeConversation,
     pendingInviteCode,
@@ -67,8 +68,9 @@ export function AppRoot() {
     (path: string) => {
       const m = path.match(/[?&]chat=([^&]+)/)
       if (m) openConversation(decodeURIComponent(m[1]))
+      if (/[?&]tab=feed(?:&|$)/.test(path)) setTab('feed')
     },
-    [openConversation],
+    [openConversation, setTab],
   )
   const pwa = usePwaRuntime(handleNotificationDeepLink)
 

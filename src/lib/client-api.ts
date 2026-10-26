@@ -275,8 +275,8 @@ export const api = {
   getPosts: (sort: 'hot' | 'new' = 'hot') =>
     request<{ posts: PostDTO[]; sort: string }>(`/api/posts?sort=${encodeURIComponent(sort)}`),
 
-  createPost: (text: string) =>
-    request<{ post: PostDTO }>('/api/posts', { method: 'POST', body: json({ text }) }),
+  createPost: (text: string, isAnonymous = false) =>
+    request<{ post: PostDTO }>('/api/posts', { method: 'POST', body: json({ text, isAnonymous }) }),
 
   deletePost: (id: string) => request<{ deleted: boolean }>(`/api/posts/${id}`, { method: 'DELETE' }),
 
@@ -290,10 +290,10 @@ export const api = {
   getPostThread: (id: string) =>
     request<{ post: PostDTO; comments: PostCommentDTO[] }>(`/api/posts/${id}/comments`),
 
-  commentPost: (id: string, text: string) =>
+  commentPost: (id: string, text: string, isAnonymous = false) =>
     request<{ comment: PostCommentDTO; commentCount: number }>(`/api/posts/${id}/comments`, {
       method: 'POST',
-      body: json({ text }),
+      body: json({ text, isAnonymous }),
     }),
 
   deleteComment: (postId: string, commentId: string) =>
@@ -310,7 +310,7 @@ export const api = {
   unblockUser: (publicId: string) =>
     request<{ blocked: boolean }>(`/api/blocks/${publicId}`, { method: 'DELETE' }),
 
-  report: (payload: { publicId?: string; conversationId?: string; reason: string; details?: string }) =>
+  report: (payload: { publicId?: string; postId?: string; conversationId?: string; reason: string; details?: string }) =>
     request<{ reportId: string; message: string }>('/api/reports', { method: 'POST', body: json(payload) }),
 
   // ─── uploads ───────────────────────────────────────────────────────────────

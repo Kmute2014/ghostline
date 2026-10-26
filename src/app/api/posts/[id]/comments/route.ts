@@ -3,7 +3,7 @@ import { handle, ok, unauthorized, notFound, badRequest, tooMany } from '@/lib/a
 import { getAuth } from '@/lib/session'
 import { db } from '@/lib/db'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
-import { notifyRoom } from '@/lib/notify'
+import { notifyRoom, notifyUsers } from '@/lib/notify'
 import { COMMENT_MAX_LEN, toPostDTO, toCommentDTO, notBlockedAuthor } from '@/lib/posts'
 
 export const dynamic = 'force-dynamic'
@@ -55,23 +55,60 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
 
   const body = await req.json().catch(() => ({}))
   const text = typeof body?.text === 'string' ? body.text.trim() : ''
+  const isAnonymous = body?.isAnonymous === true
   if (!text) throw badRequest('Comments cannot be empty.', 'EMPTY_COMMENT')
   if (text.length > COMMENT_MAX_LEN) {
     throw badRequest(`Comments are limited to ${COMMENT_MAX_LEN} characters.`, 'COMMENT_TOO_LONG')
   }
 
-  const post = await db.post.findUnique({ where: { id }, select: { id: true } })
+  const post = await db.post.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      authorId: true,
+      comments: {
+        where: { authorId: { not: meId } },
+        select: { authorId: true },
+        distinct: ['authorId'],
+      },
+    },
+  })
   if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
 
   const [comment, updated] = await db.$transaction([
     db.postComment.create({
-      data: { postId: id, authorId: meId, text },
+      data: { postId: id, authorId: meId, text, isAnonymous },
       include: { author: { include: { presence: true } } },
     }),
     db.post.update({ where: { id }, data: { commentCount: { increment: 1 } }, select: { commentCount: true } }),
   ])
 
   void notifyRoom('feed', 'feed:update', { reason: 'comment', postId: id })
+
+  const commenters = new Set(post.comments.map((existing) => existing.authorId))
+  const otherCommenters = [...commenters].filter(
+    (authorId) => authorId !== meId && authorId !== post.authorId
+  )
+  await Promise.all([
+    post.authorId !== meId
+      ? notifyUsers([post.authorId], 'buzz:notification', {
+          title: 'Buzz',
+          body: 'Someone commented on your post.',
+          tag: `buzz-post-${id}`,
+          url: '/?tab=feed',
+          postId: id,
+        })
+      : Promise.resolve(),
+    otherCommenters.length > 0
+      ? notifyUsers(otherCommenters, 'buzz:notification', {
+          title: 'Buzz',
+          body: 'Someone commented on a post you contributed to.',
+          tag: `buzz-post-${id}`,
+          url: '/?tab=feed',
+          postId: id,
+        })
+      : Promise.resolve(),
+  ])
 
   return ok({ comment: toCommentDTO(comment, meId), commentCount: updated.commentCount })
 })
