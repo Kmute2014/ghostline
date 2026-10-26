@@ -635,7 +635,10 @@ function handleInternal(req: IncomingMessage, res: ServerResponse) {
       } else if (event === 'buzz:notification' && payload && typeof payload === 'object') {
         const p = payload as PushPayload
         for (const userId of userIds.map(String)) {
-          if (!hasLiveSockets(userId)) void sendPushToUser(userId, p)
+          // A live socket does not mean the app is foregrounded. The service
+          // worker suppresses the OS notification only for a visible, focused
+          // client, so always attempt push delivery for Buzz activity.
+          void sendPushToUser(userId, p)
         }
       }
       res.writeHead(200).end(JSON.stringify({ ok: true }))
