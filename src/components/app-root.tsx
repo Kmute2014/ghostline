@@ -20,6 +20,7 @@ import { ProfileScreen } from '@/components/screens/profile/profile-screen'
 import { ChatView } from '@/components/screens/chat-view'
 import { InviteDialog } from '@/components/screens/invite-dialog'
 import { NotificationPrompt } from '@/components/shared/notification-prompt'
+import { FirstRunTour } from '@/components/shared/first-run-tour'
 import { InstallPrompt } from '@/components/shared/install-prompt'
 import { cn } from '@/lib/utils'
 import type { SessionResponse } from '@/lib/types'
@@ -27,6 +28,7 @@ import type { SessionResponse } from '@/lib/types'
 /** Tab index order drives the push/pop direction of the slide transition. */
 const TAB_ORDER: Tab[] = ['people', 'nearby', 'feed', 'stories', 'chats', 'profile']
 const PAGE_SPRING = { type: 'spring' as const, stiffness: 400, damping: 38, mass: 0.9 }
+const FIRST_RUN_TOUR_KEY = 'gl-first-run-tour-v1'
 const subscribeToDevice = () => () => {}
 
 function isIOSDevice() {
@@ -188,6 +190,63 @@ export function AppRoot() {
     enabled: Boolean(profile),
   })
   const unread = (conversationsQuery.data?.conversations ?? []).reduce((n, c) => n + c.unreadCount, 0)
+  const [tourOpen, setTourOpen] = useState(false)
+  const [tourSettled, setTourSettled] = useState(false)
+  const tourCheckedRef = useRef(false)
+
+  useEffect(() => {
+    if (!profile || chatOpen || pendingInviteCode || tourCheckedRef.current) return
+
+    const timer = window.setTimeout(() => {
+      let restoredConversationId: string | null = null
+      try {
+        restoredConversationId = window.sessionStorage.getItem('gl-active-conv')
+      } catch {
+        // Session storage can be unavailable in private browsing.
+      }
+      if (restoredConversationId) {
+        if (!conversationsQuery.isSuccess && !conversationsQuery.isError) return
+        if (
+          conversationsQuery.isSuccess &&
+          (conversationsQuery.data?.conversations ?? []).some(
+            (conversation) => conversation.id === restoredConversationId
+          )
+        ) {
+          return
+        }
+      }
+
+      tourCheckedRef.current = true
+      let shouldShowTour = true
+      try {
+        shouldShowTour = window.localStorage.getItem(FIRST_RUN_TOUR_KEY) !== '1'
+      } catch {
+        shouldShowTour = true
+      }
+      if (shouldShowTour) setTourOpen(true)
+      setTourSettled(true)
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [
+    profile,
+    chatOpen,
+    pendingInviteCode,
+    conversationsQuery.isSuccess,
+    conversationsQuery.isError,
+    conversationsQuery.data,
+  ])
+
+  const handleTourOpenChange = useCallback((open: boolean) => {
+    setTourOpen(open)
+    if (!open) {
+      try {
+        window.localStorage.setItem(FIRST_RUN_TOUR_KEY, '1')
+      } catch {
+        // The tour can still be dismissed when persistent storage is unavailable.
+      }
+    }
+  }, [])
 
   // Restore the open chat after a refresh. History itself lives on the server
   // (survives refresh by design); this restores the *view* the user was in.
@@ -382,13 +441,17 @@ export function AppRoot() {
       {/* Add-to-Home-Screen popup with auto-triggers — reopens every session until installed */}
       <InstallPrompt
         pwa={pwa}
-        active={installEligible}
-        open={installPromptOpen}
+        active={installEligible && !tourOpen}
+        open={installPromptOpen && !tourOpen}
         onOpenChange={setInstallPromptOpen}
       />
+      <FirstRunTour open={tourOpen} onOpenChange={handleTourOpenChange} />
       {/* Notification permission nudge — reappears on every refresh until enabled.
           Suppressed while a deep-link invite dialog is up (never stack two dialogs). */}
-      <NotificationPrompt active={!chatOpen && !pendingInviteCode} onResolved={handleNotifResolved} />
+      <NotificationPrompt
+        active={tourSettled && !tourOpen && !chatOpen && !pendingInviteCode}
+        onResolved={handleNotifResolved}
+      />
       {pendingInviteCode && <InviteDialog code={pendingInviteCode} onClose={() => setPendingInviteCode(null)} />}
     </div>
   )
