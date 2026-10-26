@@ -24,38 +24,6 @@ function validateDisplayName(name: string | undefined): string {
   return trimmed
 }
 
-async function migrateLegacyDisplayName(
-  profile: NonNullable<Awaited<ReturnType<typeof getAuth>>>['profile'],
-) {
-  const match = /^Ghost-(\d{4})$/i.exec(profile.displayName)
-  if (!match) return profile
-
-  return db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(0, 1196576844)`
-
-    const baseName = `Hush-${match[1]}`
-    let displayName = baseName
-    let suffix = 2
-    while (
-      await tx.profile.findFirst({
-        where: {
-          id: { not: profile.id },
-          displayName: { equals: displayName, mode: 'insensitive' },
-        },
-        select: { id: true },
-      })
-    ) {
-      displayName = `${baseName}-${suffix}`
-      suffix++
-    }
-
-    return tx.profile.update({
-      where: { id: profile.id },
-      data: { displayName },
-    })
-  })
-}
-
 function ipKey(req: NextRequest) {
   return (
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
@@ -70,7 +38,7 @@ export const GET = handle(async () => {
   if (!auth) {
     return ok({ authenticated: false, profile: null, socketToken: null })
   }
-  const profile = await migrateLegacyDisplayName(auth.profile)
+  const profile = auth.profile
   const [presence, location] = await Promise.all([
     db.presence.findUnique({ where: { userId: profile.id } }),
     db.location.findUnique({ where: { userId: profile.id } }),

@@ -763,8 +763,25 @@ export function ProfileScreen() {
 
   const applyProfile = useCallback<ApplyProfile>(
     (updated) => {
+      const nameChanged = useAppStore.getState().profile?.displayName !== updated.displayName
       setProfile(updated)
+      queryClient.setQueryData(['me'], updated)
       void queryClient.invalidateQueries({ queryKey: ['session'] })
+      if (nameChanged) {
+        for (const queryKey of [
+          ['people'],
+          ['nearby'],
+          ['contacts'],
+          ['blocks'],
+          ['conversations'],
+          ['conversation'],
+          ['messages'],
+          ['stories'],
+          ['posts'],
+        ]) {
+          void queryClient.invalidateQueries({ queryKey })
+        }
+      }
     },
     [queryClient, setProfile],
   )

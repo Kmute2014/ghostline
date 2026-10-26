@@ -139,39 +139,14 @@ export async function createAnonymousIdentity(displayName: string) {
     const recoveryCode = generateRecoveryCode()
 
     try {
-      return await db.$transaction(async (tx) => {
-        // Serialize identity creation to avoid concurrent display-name conflicts.
-        // The transaction-level advisory lock remains held until this transaction ends.
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(0, 1196576844)`
-
-        let availableDisplayName = displayName
-        let suffix = 2
-
-        while (
-          await tx.profile.findFirst({
-            where: {
-              displayName: {
-                equals: availableDisplayName,
-                mode: 'insensitive',
-              },
-            },
-            select: { id: true },
-          })
-        ) {
-          const ending = `-${suffix}`
-          availableDisplayName = `${displayName.slice(0, 24 - ending.length).trimEnd()}${ending}`
-          suffix++
-        }
-
-        return tx.profile.create({
-          data: {
-            publicId,
-            displayName: availableDisplayName,
-            inviteCode,
-            recoveryCode,
-            presence: { create: {} },
-          },
-        })
+      return await db.profile.create({
+        data: {
+          publicId,
+          displayName,
+          inviteCode,
+          recoveryCode,
+          presence: { create: {} },
+        },
       })
     } catch (error: unknown) {
       const isUniqueConstraintError =

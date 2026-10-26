@@ -103,7 +103,7 @@ export function Onboarding({ onReady }: { onReady: (data: SessionResponse) => vo
                     autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">
-                    You can change this anytime. If the name is already in use, we’ll add a number to make yours unique.
+                    You can change this anytime. Names don’t have to be unique, so the name you choose stays yours.
                   </p>
                 </div>
 
