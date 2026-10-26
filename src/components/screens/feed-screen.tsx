@@ -312,8 +312,8 @@ export function FeedScreen() {
       <p className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5 mt-auto pb-1">
         <TriangleAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
         <span>
-          Text posts only — no pictures or videos. Everyone on Hushly sees Buzz. Be kind, report
-          anything that breaks the rules.
+          Text posts only — no pictures or videos. Everyone on Hushly sees Buzz. Posts and their
+          comments are deleted after 90 days. Be kind, report anything that breaks the rules.
         </span>
       </p>
 

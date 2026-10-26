@@ -4,6 +4,7 @@ import { getAuth } from '@/lib/session'
 import { db } from '@/lib/db'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
 import { notifyRoom } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
 import {
   POST_MAX_LEN,
   HOT_CANDIDATES,
@@ -28,7 +29,10 @@ export const GET = handle(async (req: NextRequest) => {
   const sort = req.nextUrl.searchParams.get('sort') === 'new' ? 'new' : 'hot'
 
   const rows = await db.post.findMany({
-    where: notBlockedAuthor(meId),
+    where: {
+      ...notBlockedAuthor(meId),
+      createdAt: { gte: getPostRetentionCutoff() },
+    },
     include: {
       author: { include: { presence: true } },
       votes: { where: { userId: meId }, select: { value: true } },

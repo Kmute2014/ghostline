@@ -11,7 +11,7 @@
  *    block-list, conversation expiry)
  *  - Typing indicators, read receipts
  *  - Scheduled sweeps: stale presence, expired conversations (messages + media),
- *    expired stories, orphaned files
+ *    expired Buzz posts, stories, and orphaned files
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
@@ -20,6 +20,7 @@ import { PrismaClient } from '@prisma/client'
 import { unlink } from 'fs/promises'
 import path from 'path'
 import webpush from 'web-push'
+import { getPostRetentionCutoff } from '../../src/lib/post-retention'
 
 // NOTE: the public port is resolved LAZILY inside startRealtimeService() —
 // NOT at module level. ESM import hoisting evaluates this module before the
@@ -685,6 +686,16 @@ async function sweepStories() {
   if (expired.length) console.log(`[sweep] removed ${expired.length} expired stories`)
 }
 
+async function sweepExpiredPosts() {
+  const expired = await db.post.deleteMany({
+    where: { createdAt: { lt: getPostRetentionCutoff() } },
+  })
+  if (expired.count > 0) {
+    io.to('feed').emit('feed:update', { reason: 'posts_expired' })
+    console.log(`[sweep] removed ${expired.count} expired Buzz posts`)
+  }
+}
+
 async function sweepPresence() {
   const cutoff = new Date(Date.now() - ONLINE_GRACE_MS)
   const stale = await db.presence.findMany({
@@ -728,6 +739,7 @@ async function runSweeps() {
   if (sweeping) return
   sweeping = true
   try {
+    await sweepExpiredPosts()
     await sweepExpiredConversations()
     await sweepStories()
     await sweepPresence()

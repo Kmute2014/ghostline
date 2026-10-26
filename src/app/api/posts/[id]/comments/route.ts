@@ -4,6 +4,7 @@ import { getAuth } from '@/lib/session'
 import { db } from '@/lib/db'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
 import { notifyRoom, notifyUsers } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
 import { COMMENT_MAX_LEN, toPostDTO, toCommentDTO, notBlockedAuthor } from '@/lib/posts'
 
 export const dynamic = 'force-dynamic'
@@ -23,8 +24,8 @@ export const GET = handle(async (_req: NextRequest, ctx: Ctx) => {
   const meId = auth.profile.id
   const { id } = await ctx.params
 
-  const post = await db.post.findUnique({
-    where: { id },
+  const post = await db.post.findFirst({
+    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
     include: {
       author: { include: { presence: true } },
       votes: { where: { userId: meId }, select: { value: true } },
@@ -61,8 +62,8 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
     throw badRequest(`Comments are limited to ${COMMENT_MAX_LEN} characters.`, 'COMMENT_TOO_LONG')
   }
 
-  const post = await db.post.findUnique({
-    where: { id },
+  const post = await db.post.findFirst({
+    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
     select: {
       id: true,
       authorId: true,

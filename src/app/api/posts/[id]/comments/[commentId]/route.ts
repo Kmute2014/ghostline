@@ -3,6 +3,7 @@ import { handle, ok, unauthorized, notFound, forbidden } from '@/lib/api-helpers
 import { getAuth } from '@/lib/session'
 import { db } from '@/lib/db'
 import { notifyRoom } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +20,10 @@ export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
   const { id, commentId } = await ctx.params
 
   const [post, comment] = await Promise.all([
-    db.post.findUnique({ where: { id }, select: { id: true, authorId: true } }),
+    db.post.findFirst({
+      where: { id, createdAt: { gte: getPostRetentionCutoff() } },
+      select: { id: true, authorId: true },
+    }),
     db.postComment.findFirst({ where: { id: commentId, postId: id }, select: { id: true, authorId: true } }),
   ])
   if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')

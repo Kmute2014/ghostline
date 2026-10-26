@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
 import { recomputeVoteScore } from '@/lib/posts'
 import { notifyUsers } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,8 +32,8 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
     throw badRequest('Vote must be 1 (like), -1 (dislike) or 0 (clear).', 'INVALID_VOTE')
   }
 
-  const post = await db.post.findUnique({
-    where: { id },
+  const post = await db.post.findFirst({
+    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
     select: { id: true, authorId: true },
   })
   if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')

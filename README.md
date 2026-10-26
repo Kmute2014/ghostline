@@ -16,6 +16,7 @@ no phone number, no email, and no password. No matching algorithms: pick a perso
 | **Messaging** | Realtime socket path with HTTP fallback, text + image + video, delivery/Read receipts (single/double check), typing indicators, cursor pagination, optimistic sending with retry, per-conversation media authorization. |
 | **Chat expiration** | Shared conversation-level policy: new direct chats default to 24 h; 3 months or never can be selected instead. Server-computed `expiresAt`, expired chats reject messages (410), scheduled sweep deletes conversations + messages + media, "expiring soon" warnings. Either participant can change the policy (broadcast to both). |
 | **Stories** | Text/image/video, default 24 h server-enforced lifetime, audience **Public** / **Friends only** (one-way saved contacts), view tracking with owner-only viewer list, story tray with unseen rings, full-screen viewer with progress bars. |
+| **Buzz** | Public text posts are removed from the feed at 90 days and deleted from the database by the scheduled cleanup; comments and votes are deleted with each post. |
 | **Invite codes** | Unique code per user (`XXXX-XXXX`), rotate (revoke), share link `/?invite=CODE`, deep-link redemption dialog with expiration choice. Never bypasses blocks. |
 | **Contacts** | One-way saved contacts, private nicknames ("Person from the library") visible only to the namer, removal clears alias. Nickname does not change the other user's display name. |
 | **Safety** | Block (stops People listing, discovery, invites, messaging — both directions), report with reason + details, token-guarded moderation review API, rate limits on every sensitive action, upload validation (MIME + magic-byte sniffing + size caps), account deletion erasing all data. |
@@ -121,7 +122,7 @@ before relying on media.
    internal notify endpoint, and point the client socket at it.
 4. Serve behind TLS (cookie `secure` activates automatically with `NODE_ENV=production`).
 5. Move `uploads/` to object storage (keep `GET /api/files/[id]` as the only public door).
-6. Run the cleanup sweeps (conversation/story expiry, presence, orphan files) on a schedule —
+6. Run the cleanup sweeps (conversation/story/post expiry, presence, orphan files) on a schedule —
    the realtime service already runs them every 60 s / hourly.
 7. Scale note: presence fan-out and People queries are per-process; move presence state to
    Redis (or Postgres) before running multiple realtime instances.
