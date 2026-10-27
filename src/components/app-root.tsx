@@ -8,6 +8,7 @@ import { api } from '@/lib/client-api'
 import { HushlyMark } from '@/components/shared/hushly-mark'
 import { useAppStore, type Tab } from '@/store/app-store'
 import { useRealtime } from '@/hooks/use-realtime'
+import { useFirebaseRealtime } from '@/hooks/use-firebase-realtime'
 import { usePwaRuntime } from '@/hooks/use-pwa'
 import { Onboarding } from '@/components/screens/onboarding'
 import { BottomNav, SideNav } from '@/components/nav/nav'
@@ -180,7 +181,9 @@ export function AppRoot() {
     !chatOpen && notifResolved && pwa.isMobile && !pwa.isStandalone && !pwa.installed
 
   const socketToken = session.data?.socketToken ?? null
+  const firebaseToken = session.data?.firebaseToken ?? null
   useRealtime(socketToken, profile?.publicId ?? null)
+  useFirebaseRealtime(firebaseToken)
 
   // Lightweight global conversations poll: drives unread badges in nav
   const conversationsQuery = useQuery({

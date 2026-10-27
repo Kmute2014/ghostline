@@ -4,8 +4,8 @@
  * In the sandbox, src/instrumentation.ts starts the SAME service in-process if
  * this standalone instance is not running — the port guard makes both safe.
  *
- * PaaS note (Render): the platform exposes exactly one port via PORT. Map it
- * to RT_PORT here — the in-process boot must never honor PORT, because Next.js
+ * Cloud Run exposes the service port via PORT. Map it to RT_PORT here — the
+ * in-process boot must never honor PORT, because Next.js
  * sets PORT for its own HTTP server and the realtime service would try to bind
  * the app's port.
  */

@@ -24,6 +24,8 @@ export type AuthContext = {
     avatarFileId: string | null
     nearbyVisible: boolean
     showInPeople: boolean
+    notifyWhenPeopleOnline: boolean
+    onlineNotificationAudience: string
     defaultStoryAudience: string
     createdAt: Date
   }

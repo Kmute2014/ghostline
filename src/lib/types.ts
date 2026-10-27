@@ -48,6 +48,7 @@ export type SessionResponse = {
   authenticated: boolean
   profile: OwnProfile | null
   socketToken: string | null
+  firebaseToken: string | null
 }
 
 export type ExpirationPolicyDTO = '24h' | '3months' | 'never'

@@ -8,8 +8,8 @@ let currentToken: string | null = null
 /**
  * Singleton socket connection to the realtime service.
  *
- * - Production (e.g. Render two-service): set NEXT_PUBLIC_REALTIME_URL to the
- *   realtime service origin ("https://ghostline-rt.onrender.com") at BUILD time
+ * - Production: set NEXT_PUBLIC_REALTIME_URL to the realtime service origin at
+ *   BUILD time
  *   — NEXT_PUBLIC_ vars are inlined into the client bundle.
  * - Sandbox: unset → connects same-origin through the Caddy gateway
  *   (XTransformPort=3003), which forwards the full path + query.

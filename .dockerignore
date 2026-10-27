@@ -1,0 +1,8 @@
+.git
+.next
+node_modules
+mini-services/realtime/node_modules
+uploads
+dev.log
+server.log
+tool-results

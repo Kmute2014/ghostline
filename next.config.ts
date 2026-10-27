@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  serverExternalPackages: ["socket.io", "engine.io", "@prisma/client"],
+  serverExternalPackages: [
+    "socket.io",
+    "engine.io",
+    "@prisma/client",
+    "@prisma/adapter-pg",
+    "@google-cloud/cloud-sql-connector",
+    "pg",
+    "firebase-admin",
+  ],
   typescript: {
     ignoreBuildErrors: true,
   },

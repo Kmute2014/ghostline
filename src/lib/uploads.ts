@@ -1,14 +1,11 @@
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
-import path from 'path'
 import { db } from '@/lib/db'
 import { ApiError, badRequest } from '@/lib/api-helpers'
+import { getFirebaseStorageBucket } from '@/lib/firebase-admin'
 
 /**
- * Local object storage. Files live outside /public and are ONLY served through
- * the authorized GET /api/files/[id] route (participant / audience checks).
+ * Files are kept in private Firebase Storage and are ONLY served through the
+ * authorized GET /api/files/[id] route (participant / audience checks).
  */
-
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
 
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime']
@@ -63,28 +60,47 @@ export async function saveUpload(
 
   const ext =
     mime === 'image/jpeg' ? 'jpg' : mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : mime === 'image/gif' ? 'gif' : mime === 'video/webm' ? 'webm' : mime === 'video/quicktime' ? 'mov' : 'mp4'
-  const dir = path.join(UPLOAD_DIR, kind)
-  await mkdir(dir, { recursive: true })
   const name = `${Date.now().toString(36)}-${crypto.randomUUID()}`
   const storagePath = `${kind}/${name}.${ext}`
-  await writeFile(path.join(UPLOAD_DIR, storagePath), buf)
-
-  const row = await db.file.create({
-    data: { ownerId, kind, mime, size: buf.length, storagePath },
+  const storageFile = getFirebaseStorageBucket().file(storagePath)
+  await storageFile.save(buf, {
+    resumable: false,
+    metadata: {
+      contentType: mime,
+      cacheControl: 'private, max-age=31536000, immutable',
+    },
   })
 
-  return { id: row.id, kind: row.kind, mime: row.mime, size: row.size, url: `/api/files/${row.id}` }
+  try {
+    const row = await db.file.create({
+      data: { ownerId, kind, mime, size: buf.length, storagePath },
+    })
+    return { id: row.id, kind: row.kind, mime: row.mime, size: row.size, url: `/api/files/${row.id}` }
+  } catch (error) {
+    await storageFile.delete({ ignoreNotFound: true }).catch((cleanupError: unknown) => {
+      console.error('[uploads] Could not remove an unreferenced Firebase Storage object:', cleanupError)
+    })
+    throw error
+  }
 }
 
 export async function loadStoredFile(fileId: string) {
   const row = await db.file.findUnique({ where: { id: fileId } })
   if (!row) throw new ApiError(404, 'NOT_FOUND', 'File not found.')
-  const abs = path.join(UPLOAD_DIR, row.storagePath)
   let data: Buffer
   try {
-    data = await readFile(abs)
-  } catch {
-    throw new ApiError(404, 'NOT_FOUND', 'File contents are no longer available.')
+    const [downloaded] = await getFirebaseStorageBucket().file(row.storagePath).download()
+    data = downloaded
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      String(error.code) === '404'
+    ) {
+      throw new ApiError(404, 'NOT_FOUND', 'File contents are no longer available.')
+    }
+    throw error
   }
   return { row, data }
 }
@@ -94,12 +110,24 @@ export async function destroyFileRow(fileId: string | null | undefined) {
   if (!fileId) return
   const row = await db.file.findUnique({ where: { id: fileId } })
   if (!row) return
-  await db.file.delete({ where: { id: row.id } }).catch(() => undefined)
-  await unlink(path.join(UPLOAD_DIR, row.storagePath)).catch(() => undefined)
+  await unlinkByStoragePath(row.storagePath)
+  await db.file.delete({ where: { id: row.id } })
 }
 
-/** Unlinks storage when the DB row is already gone (cascade deletions). */
+/** Deletes storage when the DB row is already gone (cascade deletions). */
 export async function unlinkByStoragePath(storagePath: string | null | undefined) {
   if (!storagePath) return
-  await unlink(path.join(UPLOAD_DIR, storagePath)).catch(() => undefined)
+  try {
+    await getFirebaseStorageBucket().file(storagePath).delete()
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      String(error.code) === '404'
+    ) {
+      return
+    }
+    throw error
+  }
 }

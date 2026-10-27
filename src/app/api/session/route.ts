@@ -10,6 +10,7 @@ import { toOwnProfile } from '@/lib/dto'
 import { db } from '@/lib/db'
 import { rateLimit } from '@/lib/rate-limit'
 import { normalizeCode, isValidCodeShape } from '@/lib/ids'
+import { createFirebaseCustomToken } from '@/lib/firebase-admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +37,7 @@ function ipKey(req: NextRequest) {
 export const GET = handle(async () => {
   const auth = await getAuth()
   if (!auth) {
-    return ok({ authenticated: false, profile: null, socketToken: null })
+    return ok({ authenticated: false, profile: null, socketToken: null, firebaseToken: null })
   }
   const profile = auth.profile
   const [presence, location] = await Promise.all([
@@ -44,10 +45,12 @@ export const GET = handle(async () => {
     db.location.findUnique({ where: { userId: profile.id } }),
   ])
   const session = await db.session.findUnique({ where: { token: auth.token } })
+  const firebaseToken = await createFirebaseCustomToken(profile.id)
   return ok({
     authenticated: true,
     profile: toOwnProfile(profile, presence, location),
     socketToken: session?.socketToken ?? null,
+    firebaseToken,
   })
 })
 
@@ -62,12 +65,14 @@ export const POST = handle(async (req: NextRequest) => {
   const profile = await createAnonymousIdentity(displayName)
   if (!profile) throw new ApiError(500, 'INTERNAL', 'Could not create identity.')
   const session = await createSessionForUser(profile.id)
+  const firebaseToken = await createFirebaseCustomToken(profile.id)
 
   const res = NextResponse.json({
     authenticated: true,
     isNewUser: true,
     profile: toOwnProfile(profile, await db.presence.findUnique({ where: { userId: profile.id } }), null),
     socketToken: session.socketToken,
+    firebaseToken,
   })
   return attachSessionCookie(res, session.token)
 })
@@ -95,11 +100,13 @@ export const PUT = handle(async (req: NextRequest) => {
     throw badRequest('No identity matches this recovery code.', 'RECOVERY_NOT_FOUND')
   }
   const session = await createSessionForUser(profile.id)
+  const firebaseToken = await createFirebaseCustomToken(profile.id)
   const res = NextResponse.json({
     authenticated: true,
     recovered: true,
     profile: toOwnProfile(profile, await db.presence.findUnique({ where: { userId: profile.id } }), null),
     socketToken: session.socketToken,
+    firebaseToken,
   })
   return attachSessionCookie(res, session.token)
 })

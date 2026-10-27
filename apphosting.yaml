@@ -1,0 +1,72 @@
+runConfig:
+  cpu: 1
+  memoryMiB: 1024
+  minInstances: 0
+  maxInstances: 10
+  concurrency: 80
+
+env:
+  - variable: DATABASE_URL
+    secret: DATABASE_URL
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: DIRECT_URL
+    secret: DIRECT_URL
+    availability:
+      - BUILD
+  - variable: FIREBASE_STORAGE_BUCKET
+    value: SET_FIREBASE_STORAGE_BUCKET
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: GOOGLE_CLOUD_PROJECT
+    value: hushly-613a4
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: SET_FIREBASE_WEB_API_KEY
+    availability:
+      - BUILD
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: SET_FIREBASE_AUTH_DOMAIN
+    availability:
+      - BUILD
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: hushly-613a4
+    availability:
+      - BUILD
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: SET_FIREBASE_APP_ID
+    availability:
+      - BUILD
+  - variable: CLOUD_SQL_CONNECTION_NAME
+    value: hushly-613a4:SET_REGION:SET_INSTANCE_NAME
+    availability:
+      - RUNTIME
+  - variable: DISABLE_INPROCESS_REALTIME
+    value: "1"
+    availability:
+      - RUNTIME
+  - variable: INTERNAL_TOKEN
+    secret: INTERNAL_TOKEN
+    availability:
+      - RUNTIME
+  - variable: INTERNAL_NOTIFY_URL
+    secret: INTERNAL_NOTIFY_URL
+    availability:
+      - RUNTIME
+  - variable: NEXT_PUBLIC_REALTIME_URL
+    secret: NEXT_PUBLIC_REALTIME_URL
+    availability:
+      - BUILD
+  - variable: VAPID_PUBLIC_KEY
+    secret: VAPID_PUBLIC_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: VAPID_PRIVATE_KEY
+    secret: VAPID_PRIVATE_KEY
+    availability:
+      - RUNTIME

@@ -1,8 +1,13 @@
 /**
  * Fire-and-forget notifier: pushes realtime events from Next.js API routes to
- * the socket.io mini-service over a loopback-only HTTP endpoint. Failures are
- * tolerated — clients also poll via TanStack Query.
+ * Firebase Firestore. The Socket.IO service remains a compatibility transport
+ * for presence, typing, and socket-originated messages while the migration is
+ * rolled out.
  */
+import {
+  publishFirebaseBroadcastEvent,
+  publishFirebaseUserEvent,
+} from '@/lib/firebase-admin'
 
 const INTERNAL_URL = process.env.INTERNAL_NOTIFY_URL ?? 'http://127.0.0.1:3004/notify'
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? 'ghostline-internal-dev'
@@ -25,7 +30,13 @@ async function postNotify(body: Record<string, unknown>, event: string): Promise
 
 export async function notifyUsers(userIds: string[], event: string, payload: unknown): Promise<void> {
   if (userIds.length === 0) return
-  await postNotify({ userIds, event, payload }, event)
+  const [firebaseResult] = await Promise.allSettled([
+    publishFirebaseUserEvent(userIds, event, payload),
+    postNotify({ userIds, event, payload }, event),
+  ])
+  if (firebaseResult.status === 'rejected') {
+    console.error(`[notify] Firebase publish failed for event=${event}:`, firebaseResult.reason)
+  }
 }
 
 /**
@@ -33,5 +44,11 @@ export async function notifyUsers(userIds: string[], event: string, payload: unk
  * connected client joins). Used for Buzz feed events — everyone sees them.
  */
 export async function notifyRoom(room: string, event: string, payload: unknown): Promise<void> {
-  await postNotify({ rooms: [room], event, payload }, event)
+  const [firebaseResult] = await Promise.allSettled([
+    publishFirebaseBroadcastEvent(room, event, payload),
+    postNotify({ rooms: [room], event, payload }, event),
+  ])
+  if (firebaseResult.status === 'rejected') {
+    console.error(`[notify] Firebase publish failed for event=${event}:`, firebaseResult.reason)
+  }
 }

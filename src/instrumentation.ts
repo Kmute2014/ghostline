@@ -7,7 +7,7 @@
  * this becomes a no-op — see the port guard in service.ts.
  *
  * Set DISABLE_INPROCESS_REALTIME=1 on hosts where realtime runs as its own
- * service (e.g. Render two-service topology) so the web tier never boots a
+ * service (e.g. the Cloud Run production topology) so the web tier never boots a
  * second, unreachable instance.
  */
 export async function register() {

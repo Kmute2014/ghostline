@@ -16,10 +16,9 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { Server } from 'socket.io'
-import { PrismaClient } from '@prisma/client'
-import { unlink } from 'fs/promises'
-import path from 'path'
 import webpush from 'web-push'
+import { db } from '../../src/lib/db'
+import { unlinkByStoragePath } from '../../src/lib/uploads'
 import { getPostRetentionCutoff } from '../../src/lib/post-retention'
 
 // NOTE: the public port is resolved LAZILY inside startRealtimeService() —
@@ -29,10 +28,6 @@ import { getPostRetentionCutoff } from '../../src/lib/post-retention'
 // miss the mapping or collide with the app port.
 const INTERNAL_PORT = 3004
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? 'ghostline-internal-dev'
-const UPLOAD_DIR = process.env.UPLOAD_DIR ?? path.join(process.cwd(), 'uploads')
-
-const db = new PrismaClient({ log: ['warn', 'error'] })
-
 /**
  * Survive transient failures (e.g. SQLite contention under concurrent API
  * writes): Bun exits the process on unhandled rejections by default, which
@@ -81,7 +76,7 @@ export async function startRealtimeService(): Promise<void> {
   }
 
 const httpServer = createServer()
-// Cross-service entry points on the PUBLIC port (Render two-service topology):
+// Cross-service entry points on the public port:
 //   GET  /healthz → platform health check
 //   POST /notify  → token-guarded notify from the Next.js API routes
 // handleInternal is hoisted. Must be registered BEFORE socket.io attaches so
@@ -655,8 +650,7 @@ function handleInternal(req: IncomingMessage, res: ServerResponse) {
 // ─── scheduled sweeps (server-side expiry — never trusts client timers) ─────
 
 async function deleteFileBytes(storagePath: string | null | undefined) {
-  if (!storagePath) return
-  await unlink(path.join(UPLOAD_DIR, storagePath)).catch(() => undefined)
+  await unlinkByStoragePath(storagePath)
 }
 
 async function sweepExpiredConversations() {
