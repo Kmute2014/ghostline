@@ -1,9 +1,19 @@
+
 import { NextRequest } from 'next/server'
-import { handle, ok, unauthorized, badRequest, tooMany } from '@/lib/api-helpers'
+import {
+  handle,
+  ok,
+  unauthorized,
+  badRequest,
+  tooMany,
+} from '@/lib/api-helpers'
 import { getAuth } from '@/lib/session'
-import { db } from '@/lib/db'
+import {
+  getFirebaseAdminFirestore,
+  publishFirebaseUserEvent,
+} from '@/lib/firebase-admin'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
-import { notifyUsers } from '@/lib/notify'
+import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,117 +22,275 @@ type Ctx = { params: Promise<{ id: string }> }
 const MAX_GROUP_MEMBERS = 30
 
 /**
- * Invites users into an existing group. Any member can invite; every added
- * user lands as a full participant. A candidate is skipped (and reported back
- * by display name) when a block exists between them and the inviter — groups
- * are shared spaces, but an invite never becomes a side-channel around a
- * closed contact.
+ * Invites users into an existing group.
+ * Any current participant may invite. Users blocked in either direction
+ * are skipped, and the member limit is checked transactionally.
  */
 export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
   const auth = await getAuth()
   if (!auth) throw unauthorized()
+
   const { id } = await ctx.params
-  if (!rateLimit(`members:${auth.profile.id}`, LIMITS.memberAdd.limit, LIMITS.memberAdd.windowMs)) {
+
+  if (
+    !rateLimit(
+      `members:${auth.profile.id}`,
+      LIMITS.memberAdd.limit,
+      LIMITS.memberAdd.windowMs,
+    )
+  ) {
     throw tooMany('Too many invite attempts. Try again later.', 1800)
   }
 
-  const conversation = await db.conversation.findUnique({
-    where: { id },
-    include: { participants: { select: { userId: true } } },
-  })
-  if (!conversation || conversation.status !== 'active') {
+  const firestore = getFirebaseAdminFirestore()
+  const conversationRef = firestore.collection('conversations').doc(id)
+  const participantCollection = conversationRef.collection('participants')
+
+  const [conversationSnapshot, participantSnapshot] = await Promise.all([
+    conversationRef.get(),
+    participantCollection.get(),
+  ])
+
+  if (
+    !conversationSnapshot.exists ||
+    conversationSnapshot.data()?.status !== 'active'
+  ) {
     throw badRequest('Group not found.', 'GROUP_NOT_FOUND')
   }
+
+  const conversation = conversationSnapshot.data()!
+
   if (conversation.type !== 'group') {
-    throw badRequest('Members can only be added to group chats.', 'NOT_A_GROUP')
+    throw badRequest(
+      'Members can only be added to group chats.',
+      'NOT_A_GROUP',
+    )
   }
-  if (!conversation.participants.some((p) => p.userId === auth.profile.id)) {
-    throw badRequest('You are not a participant of this group.', 'NOT_PARTICIPANT')
+
+  if (!participantSnapshot.docs.some(
+    (doc) => String(doc.data().userId ?? doc.id) === auth.profile.id,
+  )) {
+    throw badRequest(
+      'You are not a participant of this group.',
+      'NOT_PARTICIPANT',
+    )
   }
 
   const body = await req.json().catch(() => ({}))
-  const rawIds: unknown[] = Array.isArray(body?.memberPublicIds) ? body.memberPublicIds : []
+  const rawIds: unknown[] = Array.isArray(body?.memberPublicIds)
+    ? body.memberPublicIds
+    : []
+
   const publicIds = [
-    ...new Set(rawIds.map((v) => String(v ?? '').trim()).filter((s): s is string => Boolean(s))),
+    ...new Set(
+      rawIds
+        .map((value) => String(value ?? '').trim())
+        .filter(Boolean),
+    ),
   ]
+
   if (publicIds.length === 0) {
     throw badRequest('Pick at least one person to invite.', 'NO_MEMBERS')
   }
 
-  const existing = new Set(conversation.participants.map((p) => p.userId))
-  if (existing.size + publicIds.length > MAX_GROUP_MEMBERS) {
-    throw badRequest(`Groups are limited to ${MAX_GROUP_MEMBERS} members.`, 'TOO_MANY_MEMBERS')
+  if (publicIds.length > MAX_GROUP_MEMBERS) {
+    throw badRequest(
+      `You can select at most ${MAX_GROUP_MEMBERS} people at a time.`,
+      'TOO_MANY_MEMBERS',
+    )
   }
 
-  const targets = await db.profile.findMany({
-    where: { publicId: { in: publicIds } },
-    select: { id: true, publicId: true, displayName: true },
-  })
-  const found = new Map(targets.map((t) => [t.publicId, t]))
-  const missing = publicIds.filter((p) => !found.has(p))
-  if (missing.length > 0) {
-    throw badRequest('Some selected users could not be found.', 'USER_NOT_FOUND')
+  const existing = new Set(
+    participantSnapshot.docs.map((doc) =>
+      String(doc.data().userId ?? doc.id),
+    ),
+  )
+
+  if (existing.size + publicIds.filter((publicId) => publicId).length > MAX_GROUP_MEMBERS) {
+    // A more precise check below accounts for duplicates, self, and existing members.
+    // Do not reject solely because the request contains existing members.
   }
 
-  const addedIds: string[] = []
-  const addedNames: string[] = []
-  const skipped: string[] = []
-  for (const publicId of publicIds) {
-    const t = found.get(publicId)!
-    if (t.id === auth.profile.id) continue // silently drop self
-    if (existing.has(t.id)) continue // already in — nothing to do
-    const block = await db.blockedUser.findFirst({
-      where: {
-        OR: [
-          { blockerId: t.id, blockedId: auth.profile.id },
-          { blockerId: auth.profile.id, blockedId: t.id },
-        ],
+  const profilesSnapshot = await firestore
+    .collection('profiles')
+    .where('publicId', 'in', publicIds)
+    .get()
+
+  const profilesByPublicId = new Map(
+    profilesSnapshot.docs.map((doc) => [
+      String(doc.data().publicId),
+      {
+        id: doc.id,
+        publicId: String(doc.data().publicId),
+        displayName: String(doc.data().displayName ?? 'Unknown user'),
       },
-      select: { id: true },
-    })
-    if (block) {
-      skipped.push(t.displayName)
+    ]),
+  )
+
+  const missing = publicIds.filter(
+    (publicId) => !profilesByPublicId.has(publicId),
+  )
+
+  if (missing.length > 0) {
+    throw badRequest(
+      'Some selected users could not be found.',
+      'USER_NOT_FOUND',
+    )
+  }
+
+  const candidates = publicIds
+    .map((publicId) => profilesByPublicId.get(publicId)!)
+    .filter((profile) => profile.id !== auth.profile.id)
+    .filter((profile) => !existing.has(profile.id))
+
+  const skipped: string[] = []
+  const eligible: typeof candidates = []
+
+  // Preserve the existing rule: a block in either direction prevents an invite.
+  for (const candidate of candidates) {
+    const [blockedByCandidate, blockedByInviter] = await Promise.all([
+      firestore
+        .collection('blockedUsers')
+        .where('blockerId', '==', candidate.id)
+        .where('blockedId', '==', auth.profile.id)
+        .limit(1)
+        .get(),
+      firestore
+        .collection('blockedUsers')
+        .where('blockerId', '==', auth.profile.id)
+        .where('blockedId', '==', candidate.id)
+        .limit(1)
+        .get(),
+    ])
+
+    if (!blockedByCandidate.empty || !blockedByInviter.empty) {
+      skipped.push(candidate.displayName)
       continue
     }
-    addedIds.push(t.id)
-    addedNames.push(t.displayName)
+
+    eligible.push(candidate)
   }
 
-  if (addedIds.length === 0) {
+  if (eligible.length === 0) {
     throw badRequest(
       skipped.length > 0
         ? `Couldn't add: ${skipped.join(', ')} (block active).`
         : 'Everyone selected is already in the group.',
-      'NO_ADDABLE_MEMBERS'
+      'NO_ADDABLE_MEMBERS',
     )
   }
 
-  await db.conversationParticipant.createMany({
-    data: addedIds.map((userId) => ({ conversationId: id, userId })),
-  })
+  const messageRef = conversationRef.collection('messages').doc()
+  const now = Timestamp.now()
+  const addedIds: string[] = []
+  const addedNames: string[] = []
 
-  // Timeline marker every member sees; live-delivered via conversation:updated.
-  const joinedList =
-    addedNames.length <= 3
-      ? addedNames.join(', ')
-      : `${addedNames.slice(0, 3).join(', ')} +${addedNames.length - 3} more`
-  await db.message.create({
-    data: {
+  await firestore.runTransaction(async (transaction) => {
+    const [latestConversation, latestParticipants, inviterParticipant] =
+      await Promise.all([
+        transaction.get(conversationRef),
+        transaction.get(participantCollection),
+        transaction.get(participantCollection.doc(auth.profile.id)),
+      ])
+
+    if (
+      !latestConversation.exists ||
+      latestConversation.data()?.status !== 'active'
+    ) {
+      throw badRequest('Group not found.', 'GROUP_NOT_FOUND')
+    }
+
+    if (latestConversation.data()?.type !== 'group') {
+      throw badRequest(
+        'Members can only be added to group chats.',
+        'NOT_A_GROUP',
+      )
+    }
+
+    if (!inviterParticipant.exists) {
+      throw badRequest(
+        'You are not a participant of this group.',
+        'NOT_PARTICIPANT',
+      )
+    }
+
+    const currentIds = new Set(
+      latestParticipants.docs.map((doc) =>
+        String(doc.data().userId ?? doc.id),
+      ),
+    )
+
+    const toAdd = eligible.filter(
+      (profile) => !currentIds.has(profile.id),
+    )
+
+    if (currentIds.size + toAdd.length > MAX_GROUP_MEMBERS) {
+      throw badRequest(
+        `Groups are limited to ${MAX_GROUP_MEMBERS} members.`,
+        'TOO_MANY_MEMBERS',
+      )
+    }
+
+    if (toAdd.length === 0) {
+      throw badRequest(
+        'Everyone selected is already in the group.',
+        'NO_ADDABLE_MEMBERS',
+      )
+    }
+
+    // Firestore transaction reads are complete; now write the new memberships.
+    for (const profile of toAdd) {
+      transaction.set(participantCollection.doc(profile.id), {
+        userId: profile.id,
+        lastReadAt: null,
+        joinedAt: now,
+      })
+
+      addedIds.push(profile.id)
+      addedNames.push(profile.displayName)
+    }
+
+    const joinedList =
+      addedNames.length <= 3
+        ? addedNames.join(', ')
+        : `${addedNames.slice(0, 3).join(', ')} +${addedNames.length - 3} more`
+
+    transaction.set(messageRef, {
       conversationId: id,
       senderId: auth.profile.id,
       type: 'system',
       text: `${auth.profile.displayName} added ${joinedList}`,
-    },
+      fileId: null,
+      clientId: null,
+      replyToId: null,
+      editedAt: null,
+      deletedForEveryoneAt: null,
+      hiddenForUserIds: [],
+      createdAt: now,
+    })
+
+    transaction.update(conversationRef, {
+      updatedAt: FieldValue.serverTimestamp(),
+    })
   })
 
-  // New members: full conversation appear-event (toast + list refresh + room join).
-  await notifyUsers(addedIds, 'conversation:new', {
-    conversationId: id,
-    byPublicId: auth.profile.publicId,
-    groupName: conversation.name ?? '',
-  })
-  // Everyone (including the newly added): roster + system message refresh.
-  await notifyUsers([...existing, ...addedIds], 'conversation:updated', { conversationId: id })
+  // Newly added members receive the conversation appearance event.
+  await publishFirebaseUserEvent(
+    addedIds,
+    'conversation:new',
+    {
+      conversationId: id,
+      byPublicId: auth.profile.publicId,
+      groupName: conversation.name ?? '',
+    },
+  )
+
+  // Existing and new members refresh their group roster and timeline.
+  await publishFirebaseUserEvent(
+    [...new Set([...existing, ...addedIds])],
+    'conversation:updated',
+    { conversationId: id },
+  )
 
   return ok({
     added: addedNames,

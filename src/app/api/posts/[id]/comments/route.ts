@@ -1,115 +1,92 @@
 import { NextRequest } from 'next/server'
+import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { handle, ok, unauthorized, notFound, badRequest, tooMany } from '@/lib/api-helpers'
 import { getAuth } from '@/lib/session'
-import { db } from '@/lib/db'
+import { getFirebaseAdminFirestore, publishFirebaseBroadcastEvent, publishFirebaseUserEvent } from '@/lib/firebase-admin'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
-import { notifyRoom, notifyUsers } from '@/lib/notify'
 import { getPostRetentionCutoff } from '@/lib/post-retention'
-import { COMMENT_MAX_LEN, toPostDTO, toCommentDTO, notBlockedAuthor } from '@/lib/posts'
+import { COMMENT_MAX_LEN, toPostDTO, toCommentDTO } from '@/lib/posts'
+import { blockedIdsFor, normalizeFirestoreValue } from '@/lib/firestore-route-helpers'
 
 export const dynamic = 'force-dynamic'
-
 type Ctx = { params: Promise<{ id: string }> }
-
 const COMMENT_TAKE = 200
 
-/**
- * Comments under a post. GET returns the post itself plus its visible
- * comments (block-paired authors are hidden) so a thread view is
- * self-sufficient. Comments are ordered oldest → newest (conversation flow).
- */
+async function loadPostForDTO(firestore: FirebaseFirestore.Firestore, postId: string, meId: string) {
+  const ref = firestore.collection('posts').doc(postId)
+  const snap = await ref.get()
+  if (!snap.exists || !snap.data()?.createdAt || snap.data()!.createdAt.toDate().getTime() < getPostRetentionCutoff().getTime()) return null
+  const data = normalizeFirestoreValue(snap.data())
+  const [authorSnap, presenceSnap, voteSnap] = await Promise.all([
+    firestore.collection('profiles').doc(String(data.authorId)).get(),
+    firestore.collection('presences').doc(String(data.authorId)).get(),
+    ref.collection('votes').doc(meId).get(),
+  ])
+  if (!authorSnap.exists) return null
+  const author = normalizeFirestoreValue({ id: authorSnap.id, ...authorSnap.data() })
+  author.presence = presenceSnap.exists ? normalizeFirestoreValue(presenceSnap.data()) : null
+  return { id: snap.id, ...data, author, votes: voteSnap.exists ? [{ value: voteSnap.data()?.value }] : [] }
+}
+
+async function loadCommentDTO(firestore: FirebaseFirestore.Firestore, doc: FirebaseFirestore.QueryDocumentSnapshot, meId: string) {
+  const c = normalizeFirestoreValue(doc.data())
+  const [authorSnap, presenceSnap] = await Promise.all([
+    firestore.collection('profiles').doc(String(c.authorId)).get(),
+    firestore.collection('presences').doc(String(c.authorId)).get(),
+  ])
+  if (!authorSnap.exists) return null
+  const author = normalizeFirestoreValue({ id: authorSnap.id, ...authorSnap.data() })
+  author.presence = presenceSnap.exists ? normalizeFirestoreValue(presenceSnap.data()) : null
+  return toCommentDTO({ id: doc.id, ...c, author } as never, meId)
+}
+
 export const GET = handle(async (_req: NextRequest, ctx: Ctx) => {
   const auth = await getAuth()
   if (!auth) throw unauthorized()
   const meId = auth.profile.id
   const { id } = await ctx.params
-
-  const post = await db.post.findFirst({
-    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
-    include: {
-      author: { include: { presence: true } },
-      votes: { where: { userId: meId }, select: { value: true } },
-    },
-  })
+  const firestore = getFirebaseAdminFirestore()
+  const post = await loadPostForDTO(firestore, id, meId)
   if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
-
-  const rows = await db.postComment.findMany({
-    where: { postId: id, ...notBlockedAuthor(meId) },
-    include: { author: { include: { presence: true } } },
-    orderBy: { createdAt: 'asc' },
-    take: COMMENT_TAKE,
-  })
-
-  return ok({ post: toPostDTO(post, meId), comments: rows.map((c) => toCommentDTO(c, meId)) })
+  const [commentsSnap, blockedIds] = await Promise.all([
+    firestore.collection('posts').doc(id).collection('comments').orderBy('createdAt', 'asc').limit(COMMENT_TAKE).get(),
+    blockedIdsFor(firestore, meId),
+  ])
+  const comments = await Promise.all(commentsSnap.docs.filter((d) => !blockedIds.has(String(d.data().authorId))).map((d) => loadCommentDTO(firestore, d, meId)))
+  return ok({ post: toPostDTO(post as never, meId), comments: comments.filter(Boolean) })
 })
 
-/** Add a comment under a post. Text only, same length cap as posts. */
 export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
   const auth = await getAuth()
   if (!auth) throw unauthorized()
   const meId = auth.profile.id
   const { id } = await ctx.params
-
-  if (!rateLimit(`comment:${meId}`, LIMITS.postComment.limit, LIMITS.postComment.windowMs)) {
-    throw tooMany('You are commenting too fast. Try again a bit later.', 1800)
-  }
-
+  if (!rateLimit(`comment:${meId}`, LIMITS.postComment.limit, LIMITS.postComment.windowMs)) throw tooMany('You are commenting too fast. Try again a bit later.', 1800)
   const body = await req.json().catch(() => ({}))
   const text = typeof body?.text === 'string' ? body.text.trim() : ''
   const isAnonymous = body?.isAnonymous === true
   if (!text) throw badRequest('Comments cannot be empty.', 'EMPTY_COMMENT')
-  if (text.length > COMMENT_MAX_LEN) {
-    throw badRequest(`Comments are limited to ${COMMENT_MAX_LEN} characters.`, 'COMMENT_TOO_LONG')
-  }
-
-  const post = await db.post.findFirst({
-    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
-    select: {
-      id: true,
-      authorId: true,
-      comments: {
-        where: { authorId: { not: meId } },
-        select: { authorId: true },
-        distinct: ['authorId'],
-      },
-    },
-  })
-  if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
-
-  const [comment, updated] = await db.$transaction([
-    db.postComment.create({
-      data: { postId: id, authorId: meId, text, isAnonymous },
-      include: { author: { include: { presence: true } } },
-    }),
-    db.post.update({ where: { id }, data: { commentCount: { increment: 1 } }, select: { commentCount: true } }),
-  ])
-
-  void notifyRoom('feed', 'feed:update', { reason: 'comment', postId: id })
-
-  const commenters = new Set(post.comments.map((existing) => existing.authorId))
-  const otherCommenters = [...commenters].filter(
-    (authorId) => authorId !== meId && authorId !== post.authorId
-  )
-  await Promise.all([
-    post.authorId !== meId
-      ? notifyUsers([post.authorId], 'buzz:notification', {
-          title: 'Buzz',
-          body: 'Someone commented on your post.',
-          tag: `buzz-post-${id}`,
-          url: '/?tab=feed',
-          postId: id,
-        })
-      : Promise.resolve(),
-    otherCommenters.length > 0
-      ? notifyUsers(otherCommenters, 'buzz:notification', {
-          title: 'Buzz',
-          body: 'Someone commented on a post you contributed to.',
-          tag: `buzz-post-${id}`,
-          url: '/?tab=feed',
-          postId: id,
-        })
-      : Promise.resolve(),
-  ])
-
-  return ok({ comment: toCommentDTO(comment, meId), commentCount: updated.commentCount })
+  if (text.length > COMMENT_MAX_LEN) throw badRequest(`Comments are limited to ${COMMENT_MAX_LEN} characters.`, 'COMMENT_TOO_LONG')
+  const firestore = getFirebaseAdminFirestore()
+  const postRef = firestore.collection('posts').doc(id)
+  const postSnap = await postRef.get()
+  if (!postSnap.exists || !postSnap.data()?.createdAt || postSnap.data()!.createdAt.toDate().getTime() < getPostRetentionCutoff().getTime()) throw notFound('That post is gone.', 'POST_NOT_FOUND')
+  const post = postSnap.data()!
+  const priorComments = await postRef.collection('comments').limit(1000).get()
+  const otherCommenters = [...new Set(priorComments.docs.map((d) => String(d.data().authorId ?? '')).filter((authorId) => authorId && authorId !== meId && authorId !== post.authorId))]
+  const commentRef = postRef.collection('comments').doc()
+  const now = Timestamp.now()
+  const batch = firestore.batch()
+  batch.set(commentRef, { postId: id, authorId: meId, text, isAnonymous, createdAt: now, updatedAt: now })
+  batch.update(postRef, { commentCount: FieldValue.increment(1), updatedAt: now })
+  await batch.commit()
+  void publishFirebaseBroadcastEvent('feed', 'feed:update', { reason: 'comment', postId: id }).catch(() => {})
+  const notifyPromises: Promise<void>[] = []
+  if (post.authorId !== meId) notifyPromises.push(publishFirebaseUserEvent([String(post.authorId)], 'buzz:notification', { title: 'Buzz', body: 'Someone commented on your post.', tag: `buzz-post-${id}`, url: '/?tab=feed', postId: id }))
+  if (otherCommenters.length) notifyPromises.push(publishFirebaseUserEvent(otherCommenters, 'buzz:notification', { title: 'Buzz', body: 'Someone commented on a post you contributed to.', tag: `buzz-post-${id}`, url: '/?tab=feed', postId: id }))
+  await Promise.all(notifyPromises)
+  const commentSnap = await commentRef.get()
+  const comment = await loadCommentDTO(firestore, commentSnap as never, meId)
+  const updatedPost = await postRef.get()
+  return ok({ comment, commentCount: Number(updatedPost.data()?.commentCount ?? 0) })
 })

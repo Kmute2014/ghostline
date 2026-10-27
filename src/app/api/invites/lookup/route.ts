@@ -1,106 +1,61 @@
 import { NextRequest } from 'next/server'
 import { handle, ok, unauthorized, badRequest, notFound, tooMany } from '@/lib/api-helpers'
 import { getAuth } from '@/lib/session'
-import { db } from '@/lib/db'
+import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
 import { normalizeCode, isValidCodeShape } from '@/lib/ids'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { isBlockedBetween, normalizeFirestoreValue } from '@/lib/firestore-route-helpers'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * Previews what an invite code points to BEFORE acting on it:
- *  - user codes   ("XK7Q2M9P", 8 chars)  → who the person is (minimal profile)
- *  - group codes  ("GXK72M9P", 9 chars, leading G) → group name + member count
- *
- * Deliberately minimal. Blocks (either direction, checked against every group
- * member for group codes) return 404 so a blocked user cannot probe whether a
- * code exists; self codes return 400.
- */
 export const GET = handle(async (req: NextRequest) => {
   const auth = await getAuth()
   if (!auth) throw unauthorized()
   if (!rateLimit(`invite-lookup:${auth.profile.id}`, LIMITS.inviteLookup.limit, LIMITS.inviteLookup.windowMs)) {
     throw tooMany('Too many lookups. Slow down for a moment.', 60)
   }
+  const firestore = getFirebaseAdminFirestore()
+  const code = normalizeCode(new URL(req.url).searchParams.get('code') ?? '')
 
-  const raw = new URL(req.url).searchParams.get('code') ?? ''
-  const code = normalizeCode(raw)
-
-  // ── Group codes: leading "G", 9 normalized chars ──────────────────────────
   if (code.length === 9 && code.startsWith('G')) {
-    if (!isValidCodeShape(code, 9, 9)) {
-      throw badRequest('Group invite codes look like GXK72M9P.', 'INVALID_INVITE')
-    }
+    if (!isValidCodeShape(code, 9, 9)) throw badRequest('Group invite codes look like GXK72M9P.', 'INVALID_INVITE')
     const candidates = [code, `G${code.slice(1, 5)}-${code.slice(5)}`]
-    const group = await db.conversation.findFirst({
-      where: { joinCode: { in: candidates }, type: 'group', status: 'active' },
-      include: { participants: { select: { userId: true } } },
-    })
-    if (!group || !group.name) {
-      throw notFound('No group is using this code. Check it and try again.', 'INVITE_NOT_FOUND')
-    }
-    const memberIds = group.participants.map((p) => p.userId)
+    const snap = await firestore.collection('conversations')
+      .where('joinCode', 'in', candidates).where('type', '==', 'group').where('status', '==', 'active').limit(1).get()
+    if (snap.empty || !snap.docs[0].data().name) throw notFound('No group is using this code. Check it and try again.', 'INVITE_NOT_FOUND')
+    const groupDoc = snap.docs[0]
+    const memberDocs = await groupDoc.ref.collection('participants').get()
+    const memberIds = memberDocs.docs.map((d) => d.id)
     if (memberIds.includes(auth.profile.id)) {
-      // Already a member — preview is harmless; joining is idempotent.
-      return ok({ type: 'group', group: { name: group.name, memberCount: memberIds.length, isMember: true } })
+      return ok({ type: 'group', group: { name: groupDoc.data().name, memberCount: memberIds.length, isMember: true } })
     }
-    const blockedEitherWay = await db.blockedUser.findFirst({
-      where: {
-        OR: [
-          ...memberIds.map((m) => ({ blockerId: auth.profile.id, blockedId: m })),
-          ...memberIds.map((m) => ({ blockerId: m, blockedId: auth.profile.id })),
-        ],
-      },
-      select: { id: true },
-    })
-    if (blockedEitherWay) {
-      // Vague on purpose — same wording the join flow uses.
-      throw notFound('This invite code is not valid anymore.', 'INVITE_NOT_FOUND')
+    for (const memberId of memberIds) {
+      if (await isBlockedBetween(firestore, auth.profile.id, memberId)) {
+        throw notFound('This invite code is not valid anymore.', 'INVITE_NOT_FOUND')
+      }
     }
-    return ok({ type: 'group', group: { name: group.name, memberCount: memberIds.length, isMember: false } })
+    return ok({ type: 'group', group: { name: groupDoc.data().name, memberCount: memberIds.length, isMember: false } })
   }
 
-  // ── User codes (existing flow) ─────────────────────────────────────────────
-  if (!isValidCodeShape(code, 7, 8)) {
-    throw badRequest('Invite codes look like XK7Q2M9P (7–8 characters).', 'INVALID_INVITE')
-  }
-
-  // Codes are stored dashed ("XK7Q-2M9P"); accept dashed or plain input.
+  if (!isValidCodeShape(code, 7, 8)) throw badRequest('Invite codes look like XK7Q2M9P (7–8 characters).', 'INVALID_INVITE')
   const candidates = [code]
   if (code.length === 8) candidates.unshift(`${code.slice(0, 4)}-${code.slice(4)}`)
-
-  const owner = await db.profile.findFirst({
-    where: { inviteCode: { in: candidates } },
-    select: {
-      id: true,
-      publicId: true,
-      displayName: true,
-      avatarFileId: true,
-      presence: { select: { isOnline: true, lastSeenAt: true } },
-    },
-  })
-  if (!owner) throw notFound('No one is using this code. Check it and try again.', 'INVITE_NOT_FOUND')
-  if (owner.id === auth.profile.id) {
-    throw badRequest('That is your own invite code — share it with a friend!', 'SELF_INVITE')
-  }
-
-  const blockedEitherWay = await db.blockedUser.findFirst({
-    where: { OR: [{ blockerId: auth.profile.id, blockedId: owner.id }, { blockerId: owner.id, blockedId: auth.profile.id }] },
-    select: { id: true },
-  })
-  if (blockedEitherWay) {
-    // Vague on purpose — same wording the redeem flow uses.
-    throw notFound('This invite code is not valid anymore.', 'INVITE_NOT_FOUND')
-  }
-
+  const ownerSnap = await firestore.collection('profiles').where('inviteCode', 'in', candidates).limit(1).get()
+  if (ownerSnap.empty) throw notFound('No one is using this code. Check it and try again.', 'INVITE_NOT_FOUND')
+  const owner = ownerSnap.docs[0]
+  if (owner.id === auth.profile.id) throw badRequest('That is your own invite code — share it with a friend!', 'SELF_INVITE')
+  if (await isBlockedBetween(firestore, auth.profile.id, owner.id)) throw notFound('This invite code is not valid anymore.', 'INVITE_NOT_FOUND')
+  const profile = normalizeFirestoreValue(owner.data())
+  const presenceSnap = await firestore.collection('presences').doc(owner.id).get()
+  const presence = presenceSnap.exists ? normalizeFirestoreValue(presenceSnap.data()) : null
   return ok({
     type: 'user',
     profile: {
-      publicId: owner.publicId,
-      displayName: owner.displayName,
-      avatarUrl: owner.avatarFileId ? `/api/files/${owner.avatarFileId}` : null,
-      online: owner.presence?.isOnline ?? false,
-      lastSeenAt: owner.presence?.lastSeenAt?.toISOString() ?? null,
+      publicId: profile.publicId,
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarFileId ? `/api/files/${profile.avatarFileId}` : null,
+      online: presence?.isOnline ?? false,
+      lastSeenAt: presence?.lastSeenAt?.toISOString?.() ?? null,
     },
   })
 })

@@ -1,0 +1,201 @@
+﻿D:\hush\src\app\api\auth\delete\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\auth\delete\route.ts:33: db.conversationParticipant.findMany({
+D:\hush\src\app\api\auth\delete\route.ts:37: db.story.findMany({ where: { ownerId: meId } }),
+D:\hush\src\app\api\auth\delete\route.ts:38: db.file.findMany({ where: { ownerId: meId } }),
+D:\hush\src\app\api\blocks\[publicId]\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\blocks\[publicId]\route.ts:14: const target = await db.profile.findUnique({ where: { publicId } })
+D:\hush\src\app\api\blocks\[publicId]\route.ts:16: await db.blockedUser.deleteMany({
+D:\hush\src\app\api\blocks\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\blocks\route.ts:13: const rows = await db.blockedUser.findMany({
+D:\hush\src\app\api\blocks\route.ts:37: const target = await db.profile.findUnique({ where: { publicId } })
+D:\hush\src\app\api\blocks\route.ts:41: await db.blockedUser.upsert({
+D:\hush\src\app\api\contacts\[publicId]\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\contacts\[publicId]\route.ts:28: const target = await db.profile.findUnique({ where: { publicId } })
+D:\hush\src\app\api\contacts\[publicId]\route.ts:31: const blocked = await db.blockedUser.findFirst({
+D:\hush\src\app\api\contacts\[publicId]\route.ts:36: const contact = await db.contact.upsert({
+D:\hush\src\app\api\contacts\[publicId]\route.ts:57: const target = await db.profile.findUnique({ where: { publicId } })
+D:\hush\src\app\api\contacts\[publicId]\route.ts:59: await db.contact.deleteMany({ where: { ownerId: auth.profile.id, contactId: target.id } })
+D:\hush\src\app\api\contacts\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\contacts\route.ts:19: const rows = await db.contact.findMany({
+D:\hush\src\app\api\contacts\route.ts:47: const target = await db.profile.findUnique({ where: { publicId } })
+D:\hush\src\app\api\contacts\route.ts:51: const blocked = await db.blockedUser.findFirst({
+D:\hush\src\app\api\contacts\route.ts:60: const contact = await db.contact.upsert({
+D:\hush\src\app\api\conversations\[id]\invite\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\[id]\invite\route.ts:23: const conversation = await db.conversation.findUnique({
+D:\hush\src\app\api\conversations\[id]\invite\route.ts:48: const updated = await db.conversation.update({
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:22: const conversation = await db.conversation.findUnique({
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:33: await db.message.create({
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:42: await db.conversationParticipant.delete({ where: { id: mePart.id } })
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:47: const messages = await db.message.findMany({ where: { conversationId: id }, select: { fileId: true } })
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:48: await db.conversation.delete({ where: { id } })
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:51: const files = await db.file.findMany({ where: { id: { in: fileIds } } })
+D:\hush\src\app\api\conversations\[id]\leave\route.ts:52: await db.file.deleteMany({ where: { id: { in: fileIds } } })
+D:\hush\src\app\api\conversations\[id]\members\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\[id]\members\route.ts:29: const conversation = await db.conversation.findUnique({
+D:\hush\src\app\api\conversations\[id]\members\route.ts:57: const targets = await db.profile.findMany({
+D:\hush\src\app\api\conversations\[id]\members\route.ts:74: const block = await db.blockedUser.findFirst({
+D:\hush\src\app\api\conversations\[id]\members\route.ts:100: await db.conversationParticipant.createMany({
+D:\hush\src\app\api\conversations\[id]\members\route.ts:109: await db.message.create({
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:5: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:23: const message = await db.message.findFirst({ where: { id: messageId, conversationId: id } })
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:31: const updated = await db.message.updateMany({
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:58: const message = await db.message.findFirst({ where: { id: messageId, conversationId: id } })
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:62: await db.messageHidden.createMany({
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:74: const deleted = await db.message.updateMany({
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:82: db.message.findFirst({ where: { fileId: message.fileId }, select: { id: true } }),
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:83: db.story.findFirst({ where: { fileId: message.fileId }, select: { id: true } }),
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:84: db.file.findUnique({ where: { id: message.fileId }, select: { storagePath: true } }),
+D:\hush\src\app\api\conversations\[id]\messages\[messageId]\route.ts:87: await db.file.delete({ where: { id: message.fileId } })
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:5: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:26: const messages = await db.message.findMany({
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:58: : await db.conversationParticipant.findFirst({
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:97: ? await db.message.findFirst({
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:110: const file = await db.file.findUnique({ where: { id: fileId } })
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:114: const message = await db.message.create({
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:126: db.conversation.update({ where: { id }, data: { updatedAt: new Date() } }),
+D:\hush\src\app\api\conversations\[id]\messages\route.ts:127: db.conversationParticipant.update({
+D:\hush\src\app\api\conversations\[id]\read\route.ts:5: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\[id]\read\route.ts:20: await db.conversationParticipant.update({
+D:\hush\src\app\api\conversations\[id]\route.ts:5: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\[id]\route.ts:16: const fresh = await db.conversation.findUnique({
+D:\hush\src\app\api\conversations\[id]\route.ts:21: const contactRows = await db.contact.findMany({ where: { ownerId: meId } })
+D:\hush\src\app\api\conversations\[id]\route.ts:64: const updated = await db.conversation.update({
+D:\hush\src\app\api\conversations\[id]\route.ts:82: const updated = await db.conversation.update({
+D:\hush\src\app\api\conversations\[id]\route.ts:109: const messages = await db.message.findMany({ where: { conversationId: access.conversation.id }, select: { fileId: true } })
+D:\hush\src\app\api\conversations\[id]\route.ts:110: await db.conversation.delete({ where: { id: access.conversation.id } })
+D:\hush\src\app\api\conversations\[id]\route.ts:121: const files = await db.file.findMany({ where: { id: { in: fileIds } } })
+D:\hush\src\app\api\conversations\[id]\route.ts:122: await db.file.deleteMany({ where: { id: { in: fileIds } } })
+D:\hush\src\app\api\conversations\route.ts:2: import { Prisma } from '@prisma/client'
+D:\hush\src\app\api\conversations\route.ts:5: import { db } from '@/lib/db'
+D:\hush\src\app\api\conversations\route.ts:17: } satisfies Prisma.ConversationInclude
+D:\hush\src\app\api\conversations\route.ts:24: const participations = await db.conversationParticipant.findMany({
+D:\hush\src\app\api\conversations\route.ts:29: const contactRows = await db.contact.findMany({ where: { ownerId: meId } })
+D:\hush\src\app\api\conversations\route.ts:69: const target = await db.profile.findUnique({ where: { publicId } })
+D:\hush\src\app\api\conversations\route.ts:80: const fresh = await db.conversation.findUnique({
+D:\hush\src\app\api\conversations\route.ts:85: const contactRows = await db.contact.findMany({ where: { ownerId: meId } })
+D:\hush\src\app\api\groups\join\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\groups\join\route.ts:36: const conversation = await db.conversation.findFirst({
+D:\hush\src\app\api\groups\join\route.ts:57: const block = await db.blockedUser.findFirst({
+D:\hush\src\app\api\groups\join\route.ts:70: await db.conversationParticipant.create({
+D:\hush\src\app\api\groups\join\route.ts:74: await db.message.create({
+D:\hush\src\app\api\groups\join\route.ts:92: const fresh = await db.conversation.findUnique({
+D:\hush\src\app\api\groups\join\route.ts:97: const contactRows = await db.contact.findMany({ where: { ownerId: meId } })
+D:\hush\src\app\api\groups\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\groups\route.ts:42: const targets = await db.profile.findMany({
+D:\hush\src\app\api\groups\route.ts:57: const block = await db.blockedUser.findFirst({
+D:\hush\src\app\api\groups\route.ts:75: await db.message.create({
+D:\hush\src\app\api\groups\route.ts:90: const fresh = await db.conversation.findUnique({
+D:\hush\src\app\api\groups\route.ts:95: const contactRows = await db.contact.findMany({ where: { ownerId: auth.profile.id } })
+D:\hush\src\app\api\invites\lookup\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\invites\lookup\route.ts:35: const group = await db.conversation.findFirst({
+D:\hush\src\app\api\invites\lookup\route.ts:47: const blockedEitherWay = await db.blockedUser.findFirst({
+D:\hush\src\app\api\invites\lookup\route.ts:72: const owner = await db.profile.findFirst({
+D:\hush\src\app\api\invites\lookup\route.ts:87: const blockedEitherWay = await db.blockedUser.findFirst({
+D:\hush\src\app\api\invites\redeem\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\invites\redeem\route.ts:36: const recipient = await db.profile.findFirst({ where: { inviteCode: { in: candidates } } })
+D:\hush\src\app\api\invites\redeem\route.ts:60: const fresh = await db.conversation.findUnique({
+D:\hush\src\app\api\invites\redeem\route.ts:65: const contactRows = await db.contact.findMany({ where: { ownerId: auth.profile.id } })
+D:\hush\src\app\api\invites\route.ts:3: import { db } from '@/lib/db'
+D:\hush\src\app\api\invites\route.ts:35: const profile = await db.profile.update({
+D:\hush\src\app\api\location\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\location\route.ts:22: const profile = await db.profile.findUnique({ where: { id: auth.profile.id } })
+D:\hush\src\app\api\location\route.ts:38: const location = await db.location.upsert({
+D:\hush\src\app\api\location\route.ts:52: db.location.deleteMany({ where: { userId: auth.profile.id } }),
+D:\hush\src\app\api\location\route.ts:53: db.profile.update({ where: { id: auth.profile.id }, data: { nearbyVisible: false } }),
+D:\hush\src\app\api\me\route.ts:5: import { db } from '@/lib/db'
+D:\hush\src\app\api\me\route.ts:16: db.presence.findUnique({ where: { userId: auth.profile.id } }),
+D:\hush\src\app\api\me\route.ts:17: db.location.findUnique({ where: { userId: auth.profile.id } }),
+D:\hush\src\app\api\me\route.ts:40: const file = await db.file.findUnique({ where: { id: fileId } })
+D:\hush\src\app\api\me\route.ts:56: if (!v) await db.location.deleteMany({ where: { userId: auth.profile.id } })
+D:\hush\src\app\api\me\route.ts:79: const profile = await db.profile.update({ where: { id: auth.profile.id }, data })
+D:\hush\src\app\api\me\route.ts:81: db.presence.findUnique({ where: { userId: profile.id } }),
+D:\hush\src\app\api\me\route.ts:82: db.location.findUnique({ where: { userId: profile.id } }),
+D:\hush\src\app\api\moderation\reports\route.ts:3: import { db } from '@/lib/db'
+D:\hush\src\app\api\moderation\reports\route.ts:29: const reports = await db.abuseReport.findMany({
+D:\hush\src\app\api\moderation\reports\route.ts:60: const report = await db.abuseReport.update({
+D:\hush\src\app\api\nearby\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\nearby\route.ts:30: const me = await db.profile.findUnique({
+D:\hush\src\app\api\nearby\route.ts:45: const candidates = await db.profile.findMany({
+D:\hush\src\app\api\people\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\people\route.ts:30: const candidates = await db.profile.findMany({
+D:\hush\src\app\api\people\route.ts:45: const participations = await db.conversationParticipant.findMany({
+D:\hush\src\app\api\people\route.ts:64: const favorites = await db.contact.findMany({
+D:\hush\src\app\api\posts\[id]\comments\[commentId]\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\posts\[id]\comments\[commentId]\route.ts:23: db.post.findFirst({
+D:\hush\src\app\api\posts\[id]\comments\[commentId]\route.ts:27: db.postComment.findFirst({ where: { id: commentId, postId: id }, select: { id: true, authorId: true } }),
+D:\hush\src\app\api\posts\[id]\comments\[commentId]\route.ts:38: db.postComment.delete({ where: { id: comment.id } }),
+D:\hush\src\app\api\posts\[id]\comments\[commentId]\route.ts:39: db.post.update({ where: { id }, data: { commentCount: { decrement: 1 } }, select: { commentCount: true } }),
+D:\hush\src\app\api\posts\[id]\comments\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\posts\[id]\comments\route.ts:27: const post = await db.post.findFirst({
+D:\hush\src\app\api\posts\[id]\comments\route.ts:36: const rows = await db.postComment.findMany({
+D:\hush\src\app\api\posts\[id]\comments\route.ts:65: const post = await db.post.findFirst({
+D:\hush\src\app\api\posts\[id]\comments\route.ts:80: db.postComment.create({
+D:\hush\src\app\api\posts\[id]\comments\route.ts:84: db.post.update({ where: { id }, data: { commentCount: { increment: 1 } }, select: { commentCount: true } }),
+D:\hush\src\app\api\posts\[id]\vote\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\posts\[id]\vote\route.ts:35: const post = await db.post.findFirst({
+D:\hush\src\app\api\posts\[id]\vote\route.ts:44: const previousVote = await db.postVote.findUnique({
+D:\hush\src\app\api\posts\[id]\vote\route.ts:50: await db.postVote.deleteMany({ where: { postId: id, userId: meId } })
+D:\hush\src\app\api\posts\[id]\vote\route.ts:53: await db.postVote.upsert({
+D:\hush\src\app\api\posts\[id]\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\posts\[id]\route.ts:18: const post = await db.post.findFirst({
+D:\hush\src\app\api\posts\[id]\route.ts:27: await db.post.delete({ where: { id } })
+D:\hush\src\app\api\posts\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\posts\route.ts:31: const rows = await db.post.findMany({
+D:\hush\src\app\api\posts\route.ts:71: const post = await db.post.create({
+D:\hush\src\app\api\push\subscribe\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\push\subscribe\route.ts:35: const existing = await db.pushSubscription.findMany({
+D:\hush\src\app\api\push\subscribe\route.ts:42: await db.pushSubscription.deleteMany({ where: { id: { in: excess.map((s) => s.id) } } })
+D:\hush\src\app\api\push\subscribe\route.ts:45: const sub = await db.pushSubscription.upsert({
+D:\hush\src\app\api\push\subscribe\route.ts:62: await db.pushSubscription.deleteMany({
+D:\hush\src\app\api\push\subscribe\route.ts:66: await db.pushSubscription.deleteMany({ where: { userId: auth.profile.id } })
+D:\hush\src\app\api\reports\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\reports\route.ts:26: const target = await db.profile.findUnique({ where: { publicId: String(body.publicId) } })
+D:\hush\src\app\api\reports\route.ts:31: const post = await db.post.findUnique({
+D:\hush\src\app\api\reports\route.ts:39: const conv = await db.conversation.findUnique({ where: { id: String(body.conversationId) } })
+D:\hush\src\app\api\reports\route.ts:41: const participant = await db.conversationParticipant.findFirst({
+D:\hush\src\app\api\reports\route.ts:51: const report = await db.abuseReport.create({
+D:\hush\src\app\api\stories\[id]\view\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\stories\[id]\view\route.ts:18: const story = await db.story.findUnique({ where: { id }, include: { owner: true } })
+D:\hush\src\app\api\stories\[id]\view\route.ts:25: const saved = await db.contact.findFirst({
+D:\hush\src\app\api\stories\[id]\view\route.ts:30: const blocked = await db.blockedUser.findFirst({
+D:\hush\src\app\api\stories\[id]\view\route.ts:36: await db.storyView.upsert({
+D:\hush\src\app\api\stories\[id]\view\route.ts:42: const count = await db.storyView.count({ where: { storyId: id } })
+D:\hush\src\app\api\stories\[id]\viewers\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\stories\[id]\viewers\route.ts:16: const story = await db.story.findUnique({ where: { id } })
+D:\hush\src\app\api\stories\[id]\viewers\route.ts:19: const views = await db.storyView.findMany({
+D:\hush\src\app\api\stories\[id]\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\stories\[id]\route.ts:17: const story = await db.story.findUnique({ where: { id } })
+D:\hush\src\app\api\stories\[id]\route.ts:20: await db.story.delete({ where: { id } }) // cascades views
+D:\hush\src\app\api\stories\route.ts:4: import { db } from '@/lib/db'
+D:\hush\src\app\api\stories\route.ts:25: const whoSavedMe = await db.contact.findMany({ where: { contactId: meId }, select: { ownerId: true } })
+D:\hush\src\app\api\stories\route.ts:27: const stories = await db.story.findMany({
+D:\hush\src\app\api\stories\route.ts:46: ? await db.story.findMany({
+D:\hush\src\app\api\stories\route.ts:59: const friendOwners = await db.profile.findMany({
+D:\hush\src\app\api\stories\route.ts:75: const myStories = await db.story.findMany({
+D:\hush\src\app\api\stories\route.ts:134: const file = await db.file.findUnique({ where: { id: fileId } })
+D:\hush\src\app\api\stories\route.ts:141: const story = await db.story.create({
+D:\hush\src\lib\conversation-access.ts:1: import { db } from '@/lib/db'
+D:\hush\src\lib\conversation-access.ts:39: const conversation = await db.conversation.findUnique({
+D:\hush\src\lib\conversation-access.ts:65: const blocks = await db.blockedUser.findMany({
+D:\hush\src\lib\conversation-access.ts:103: return db.profile.findUnique({ where: { publicId }, include: { presence: true } })
+D:\hush\src\lib\conversation-create.ts:1: import { db } from '@/lib/db'
+D:\hush\src\lib\conversation-create.ts:20: const blocks = await db.blockedUser.findMany({
+D:\hush\src\lib\conversation-create.ts:32: const conversation = await db.conversation.create({
+D:\hush\src\lib\conversation-create.ts:51: const conversation = await db.conversation.create({
+D:\hush\src\lib\db.ts:1: import { PrismaClient } from '@prisma/client'
+D:\hush\src\lib\db.ts:32: globalForPrisma.cloudSqlConnector = connector
+D:\hush\src\lib\db.ts:48: export const db = globalForPrisma.prisma ?? (await createPrismaClient())
+D:\hush\src\lib\db.ts:50: globalForPrisma.prisma = db
+D:\hush\src\lib\dto.ts:1: import { db } from '@/lib/db'
+D:\hush\src\lib\dto.ts:119: db.message.findFirst({
+D:\hush\src\lib\dto.ts:127: db.message.count({
+D:\hush\src\lib\posts.ts:7: import { db } from '@/lib/db'
+D:\hush\src\lib\posts.ts:113: const agg = await db.postVote.aggregate({ where: { postId }, _sum: { value: true } })
+D:\hush\src\lib\posts.ts:115: await db.post.update({ where: { id: postId }, data: { voteScore: score } }).catch(() => undefined)
+D:\hush\src\lib\push.ts:9: import { db } from '@/lib/db'
+D:\hush\src\lib\push.ts:54: const subs = await db.pushSubscription
+D:\hush\src\lib\push.ts:83: await db.pushSubscription
+D:\hush\src\lib\uploads.ts:2: import { db } from '@/lib/db'
+D:\hush\src\lib\uploads.ts:56: const row = await db.file.findUnique({ where: { id: fileId } })
+D:\hush\src\lib\uploads.ts:59: await db.file.delete({ where: { id: row.id } })

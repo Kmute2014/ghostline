@@ -1,4 +1,5 @@
-import { db } from '@/lib/db'
+import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
+import { Timestamp } from 'firebase-admin/firestore'
 import { approximateDistance } from '@/lib/geo'
 import { isExpiringSoon } from '@/lib/expire'
 import type {
@@ -104,6 +105,7 @@ export type { ContactFlags }
  * loaded conversation row (participants included). Presence is passed in a
  * side map because call sites load it differently.
  */
+
 export async function toConversationSummary(
   conversation: ConversationRow,
   meId: string,
@@ -111,31 +113,61 @@ export async function toConversationSummary(
   presenceByUser: PresenceByUser,
   contacts: ContactFlags
 ): Promise<ConversationSummary> {
+  const firestore = getFirebaseAdminFirestore()
   const isGroup = conversation.type === 'group'
   const others = participants.filter((p) => p.userId !== meId)
   const myPart = participants.find((p) => p.userId === meId)
 
-  const [lastMessage, unreadCount] = await Promise.all([
-    db.message.findFirst({
-      where: {
-        conversationId: conversation.id,
-        hiddenFor: { none: { userId: meId } },
-      },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, senderId: true, type: true, text: true, createdAt: true, deletedForEveryoneAt: true },
-    }),
-    db.message.count({
-      where: {
-        conversationId: conversation.id,
-        deletedForEveryoneAt: null,
-        hiddenFor: { none: { userId: meId } },
-        senderId: { in: others.map((o) => o.userId) },
-        createdAt: myPart?.lastReadAt ? { gt: myPart.lastReadAt } : undefined,
-      },
-    }),
-  ])
+  const messagesSnapshot = await firestore
+    .collection('conversations')
+    .doc(conversation.id)
+    .collection('messages')
+    .orderBy('createdAt', 'desc')
+    .get()
 
-  // Senders are always participants, so the public id can be resolved locally.
+  const messageRows = messagesSnapshot.docs.map((doc) => {
+    const data = doc.data()
+    const rawDate = data.createdAt
+    const createdAt =
+      rawDate instanceof Timestamp
+        ? rawDate.toDate()
+        : rawDate instanceof Date
+          ? rawDate
+          : new Date(rawDate ?? Date.now())
+
+    const deletedAt = data.deletedForEveryoneAt
+    const deletedForEveryone = Boolean(deletedAt)
+
+    return {
+      id: doc.id,
+      senderId: String(data.senderId ?? ''),
+      type: String(data.type ?? 'text'),
+      text: data.text == null ? null : String(data.text),
+      createdAt,
+      deletedForEveryone,
+      hiddenForUserIds: Array.isArray(data.hiddenForUserIds)
+        ? data.hiddenForUserIds.map(String)
+        : [],
+    }
+  })
+
+  const visibleMessages = messageRows.filter(
+    (message) => !message.hiddenForUserIds.includes(meId)
+  )
+
+  const lastMessage = visibleMessages[0] ?? null
+
+  const otherIds = new Set(others.map((participant) => participant.userId))
+  const lastReadAt = myPart?.lastReadAt ?? null
+
+  const unreadCount = messageRows.filter((message) => {
+    if (message.deletedForEveryone) return false
+    if (message.hiddenForUserIds.includes(meId)) return false
+    if (!otherIds.has(message.senderId)) return false
+    if (lastReadAt && message.createdAt <= lastReadAt) return false
+    return true
+  }).length
+
   const senderPart = lastMessage
     ? participants.find((p) => p.userId === lastMessage.senderId)
     : undefined
@@ -143,15 +175,17 @@ export async function toConversationSummary(
   const lastMessageDTO = lastMessage
     ? {
         id: lastMessage.id,
-        senderPublicId: senderPart ? senderPart.user.publicId : '',
+        senderPublicId: senderPart?.user.publicId ?? '',
         type: lastMessage.type as 'text' | 'image' | 'video' | 'system',
-        text: lastMessage.deletedForEveryoneAt ? null : lastMessage.text,
+        text: lastMessage.deletedForEveryone ? null : lastMessage.text,
         createdAt: lastMessage.createdAt.toISOString(),
-        deletedForEveryone: Boolean(lastMessage.deletedForEveryoneAt),
+        deletedForEveryone: lastMessage.deletedForEveryone,
       }
     : null
 
-  const creatorPart = participants.find((p) => p.userId === conversation.createdById)
+  const creatorPart = participants.find(
+    (p) => p.userId === conversation.createdById
+  )
 
   if (isGroup) {
     return {
@@ -163,12 +197,15 @@ export async function toConversationSummary(
       expiresAt: conversation.expiresAt?.toISOString() ?? null,
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
-      expiresSoon: false, // groups never expire
+      expiresSoon: false,
       unreadCount,
       other: null,
-      members: others.map((o) => ({
-        ...toPublicProfile(o.user, presenceByUser.get(o.userId) ?? null),
-        nickname: contacts.get(o.userId)?.nickname ?? null,
+      members: others.map((participant) => ({
+        ...toPublicProfile(
+          participant.user,
+          presenceByUser.get(participant.userId) ?? null
+        ),
+        nickname: contacts.get(participant.userId)?.nickname ?? null,
       })),
       createdByPublicId: creatorPart?.user.publicId ?? null,
       lastMessage: lastMessageDTO,
@@ -176,9 +213,8 @@ export async function toConversationSummary(
   }
 
   const other = others[0]
+
   if (!other) {
-    // A direct conversation always has exactly two participants; this can only
-    // happen transiently during deletion races. Report an ended shell.
     return {
       id: conversation.id,
       type: 'direct',
@@ -198,6 +234,7 @@ export async function toConversationSummary(
   }
 
   const contactFlags = contacts.get(other.userId)
+
   return {
     id: conversation.id,
     type: 'direct',
@@ -207,10 +244,16 @@ export async function toConversationSummary(
     expiresAt: conversation.expiresAt?.toISOString() ?? null,
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
-    expiresSoon: isExpiringSoon(conversation.expiresAt, conversation.expirationPolicy),
+    expiresSoon: isExpiringSoon(
+      conversation.expiresAt,
+      conversation.expirationPolicy
+    ),
     unreadCount,
     other: {
-      ...toPublicProfile(other.user, presenceByUser.get(other.userId) ?? null),
+      ...toPublicProfile(
+        other.user,
+        presenceByUser.get(other.userId) ?? null
+      ),
       nickname: contactFlags?.nickname ?? null,
       savedAsContact: contacts.has(other.userId),
       favorited: contactFlags?.favorite ?? false,

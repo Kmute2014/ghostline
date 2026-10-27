@@ -1,0 +1,1741 @@
+﻿
+
+================================================================
+FILE: src\app\api\auth\delete\route.ts
+================================================================
+import { NextRequest, NextResponse } from 'next/server'
+import { handle, ok, unauthorized, tooMany } from '@/lib/api-helpers'
+import { getAuth, clearSessionCookie } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { unlinkByStoragePath } from '@/lib/uploads'
+import { notifyUsers } from '@/lib/notify'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Deletes the anonymous identity and its associated data:
+ * profile, sessions, presence, location, stories (+media), contacts,
+ * blocks, reports, sent messages and 1:1 conversations (with media).
+ * The other side of each conversation is notified in realtime.
+ */
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`delete:${auth.profile.id}`, LIMITS.accountDelete.limit, LIMITS.accountDelete.windowMs)) {
+    throw tooMany('Too many deletion attempts. Contact support if this persists.', 3600)
+  }
+  // Confirm via body flag (double-submit pattern keeps destructive action deliberate)
+  const body = await req.json().catch(() => ({}))
+  if (body?.confirm !== 'DELETE') {
+    return ok({ requiresConfirmation: true, message: 'Send { confirm: "DELETE" } to erase this identity permanently.' })
+  }
+
+  const meId = auth.profile.id
+
+  // Collect data before deletion
+  const [participations, myStories, myFiles] = await Promise.all([
+    db.conversationParticipant.findMany({
+      where: { userId: meId },
+      include: { conversation: { include: { participants: true } } },
+    }),
+    db.story.findMany({ where: { ownerId: meId } }),
+    db.file.findMany({ where: { ownerId: meId } }),
+  ])
+
+  const partnerIds = new Set<string>()
+  const conversationIds = new Set<string>()
+  for (const p of participations) {
+    conversationIds.add(p.conversationId)
+    for (const q of p.conversation.participants) {
+      if (q.userId !== meId) partnerIds.add(q.userId)
+    }
+  }
+
+  // Notify partners before rows disappear
+  await notifyUsers([...partnerIds], 'conversation:deleted', {
+    conversationIds: [...conversationIds],
+    reason: 'account_deleted',
+  })
+
+  await db.$transaction(async (tx) => {
+    // Messages in conversations I took part in (1:1 chats die with the account)
+    for (const convId of conversationIds) {
+      await tx.message.deleteMany({ where: { conversationId: convId } })
+      await tx.conversationParticipant.deleteMany({ where: { conversationId: convId } })
+      await tx.conversation.delete({ where: { id: convId } })
+    }
+    for (const s of myStories) {
+      await tx.storyView.deleteMany({ where: { storyId: s.id } })
+    }
+    await tx.story.deleteMany({ where: { ownerId: meId } })
+    await tx.contact.deleteMany({ where: { OR: [{ ownerId: meId }, { contactId: meId }] } })
+    await tx.blockedUser.deleteMany({ where: { OR: [{ blockerId: meId }, { blockedId: meId }] } })
+    await tx.abuseReport.deleteMany({ where: { OR: [{ reporterId: meId }, { reportedUserId: meId }] } })
+    await tx.session.deleteMany({ where: { userId: meId } })
+    await tx.presence.deleteMany({ where: { userId: meId } })
+    await tx.location.deleteMany({ where: { userId: meId } })
+    await tx.profile.delete({ where: { id: meId } }) // cascades: files, sessions, presenceâ€¦
+  })
+
+  // Bytes cleanup (rows cascade-deleted; unlink the storage directly).
+  // myFiles covers avatars, message media and story media (all owned by the user).
+  for (const f of myFiles) await unlinkByStoragePath(f.storagePath)
+
+  const res = NextResponse.json({ deleted: true })
+  return clearSessionCookie(res)
+})
+
+
+
+================================================================
+FILE: src\app\api\blocks\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, notFound } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { avatarUrlFor } from '@/lib/dto'
+import type { BlockDTO } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
+
+export const GET = handle(async () => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const rows = await db.blockedUser.findMany({
+    where: { blockerId: auth.profile.id },
+    include: { blocked: true },
+    orderBy: { createdAt: 'desc' },
+  })
+  const blocks: BlockDTO[] = rows.map((r) => ({
+    publicId: r.blocked.publicId,
+    displayName: r.blocked.displayName,
+    avatarUrl: avatarUrlFor(r.blocked.avatarFileId),
+    blockedAt: r.createdAt.toISOString(),
+  }))
+  return ok({ blocks })
+})
+
+/**
+ * Blocking stops discovery, matching, invites and messaging between the pair
+ * (both directions). Existing conversations reject new messages.
+ */
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const body = await req.json().catch(() => ({}))
+  const publicId = String(body?.publicId ?? '').trim()
+  if (!publicId) throw badRequest('A user is required.', 'MISSING_USER')
+  const target = await db.profile.findUnique({ where: { publicId } })
+  if (!target) throw notFound('That user could not be found.', 'USER_NOT_FOUND')
+  if (target.id === auth.profile.id) throw badRequest('You cannot block yourself.', 'SELF_BLOCK')
+
+  await db.blockedUser.upsert({
+    where: { blockerId_blockedId: { blockerId: auth.profile.id, blockedId: target.id } },
+    create: { blockerId: auth.profile.id, blockedId: target.id },
+    update: {},
+  })
+  return ok({ blocked: true, publicId })
+})
+
+
+
+================================================================
+FILE: src\app\api\blocks\[publicId]\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ publicId: string }> }
+
+export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const { publicId } = await ctx.params
+  const target = await db.profile.findUnique({ where: { publicId } })
+  if (!target) throw notFound('That user could not be found.', 'USER_NOT_FOUND')
+  await db.blockedUser.deleteMany({
+    where: { blockerId: auth.profile.id, blockedId: target.id },
+  })
+  return ok({ blocked: false })
+})
+
+
+
+================================================================
+FILE: src\app\api\contacts\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, notFound, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { avatarUrlFor } from '@/lib/dto'
+import type { ContactDTO } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Contacts are ONE-WAY saved friends: saving someone does not grant them
+ * message rights, reveal location data or bypass blocks â€” it only defines the
+ * "Friends only" story audience for the saver and stores a private nickname.
+ */
+export const GET = handle(async () => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const rows = await db.contact.findMany({
+    where: { ownerId: auth.profile.id },
+    include: { contact: { include: { presence: true } } },
+    orderBy: { createdAt: 'desc' },
+  })
+  const contacts: ContactDTO[] = rows.map((r) => ({
+    publicId: r.contact.publicId,
+    displayName: r.contact.displayName,
+    avatarUrl: avatarUrlFor(r.contact.avatarFileId),
+    online: r.contact.presence?.isOnline ?? false,
+    lastSeenAt: r.contact.presence?.isOnline ? null : r.contact.presence?.lastSeenAt.toISOString() ?? null,
+    nickname: r.nickname,
+    favorite: r.favorite,
+    savedAt: r.createdAt.toISOString(),
+  }))
+  return ok({ contacts })
+})
+
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`contact:${auth.profile.id}`, LIMITS.contactAdd.limit, LIMITS.contactAdd.windowMs)) {
+    throw tooMany('Too many contact updates. Try later.', 600)
+  }
+  const body = await req.json().catch(() => ({}))
+  const publicId = String(body?.publicId ?? '').trim()
+  if (!publicId) throw badRequest('A user is required.', 'MISSING_USER')
+
+  const target = await db.profile.findUnique({ where: { publicId } })
+  if (!target) throw notFound('That user could not be found.', 'USER_NOT_FOUND')
+  if (target.id === auth.profile.id) throw badRequest('You cannot save yourself.', 'SELF_CONTACT')
+
+  const blocked = await db.blockedUser.findFirst({
+    where: { OR: [{ blockerId: target.id, blockedId: auth.profile.id }, { blockerId: auth.profile.id, blockedId: target.id }] },
+  })
+  if (blocked) throw badRequest('This contact is unavailable.', 'BLOCKED')
+
+  const nickname = typeof body?.nickname === 'string' && body.nickname.trim()
+    ? body.nickname.trim().slice(0, 40)
+    : undefined
+
+  const contact = await db.contact.upsert({
+    where: { ownerId_contactId: { ownerId: auth.profile.id, contactId: target.id } },
+    create: { ownerId: auth.profile.id, contactId: target.id, nickname },
+    update: nickname !== undefined ? { nickname } : {},
+  })
+  return ok({ publicId: target.publicId, nickname: contact.nickname, saved: true })
+})
+
+
+
+================================================================
+FILE: src\app\api\contacts\[publicId]\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, notFound } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ publicId: string }> }
+
+/**
+ * Updates one of my contacts. Accepts a private `nickname` and/or a `favorite`
+ * flag. Favouriting auto-saves the contact if they are not saved yet â€”
+ * favourited contacts always pin to the top of the Chats list.
+ */
+export const PATCH = handle(async (req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const { publicId } = await ctx.params
+  const body = await req.json().catch(() => ({}))
+
+  const hasNickname = typeof body?.nickname === 'string' && body.nickname.trim().length > 0
+  const hasFavorite = typeof body?.favorite === 'boolean'
+  if (!hasNickname && !hasFavorite) {
+    throw badRequest('Nothing to update â€” provide a nickname or a favorite flag.', 'EMPTY_UPDATE')
+  }
+  const nickname = hasNickname ? String(body.nickname).trim().slice(0, 40) : undefined
+
+  const target = await db.profile.findUnique({ where: { publicId } })
+  if (!target) throw notFound('That user could not be found.', 'USER_NOT_FOUND')
+
+  const blocked = await db.blockedUser.findFirst({
+    where: { OR: [{ blockerId: target.id, blockedId: auth.profile.id }, { blockerId: auth.profile.id, blockedId: target.id }] },
+  })
+  if (blocked) throw badRequest('This contact is unavailable.', 'BLOCKED')
+
+  const contact = await db.contact.upsert({
+    where: { ownerId_contactId: { ownerId: auth.profile.id, contactId: target.id } },
+    create: {
+      ownerId: auth.profile.id,
+      contactId: target.id,
+      nickname: nickname ?? null,
+      favorite: hasFavorite ? body.favorite : false,
+    },
+    update: {
+      ...(nickname !== undefined ? { nickname } : {}),
+      ...(hasFavorite ? { favorite: body.favorite } : {}),
+    },
+  })
+  return ok({ publicId, nickname: contact.nickname, favorite: contact.favorite, saved: true })
+})
+
+/** Removing a contact also removes my private nickname + favourite for them. */
+export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const { publicId } = await ctx.params
+  const target = await db.profile.findUnique({ where: { publicId } })
+  if (!target) throw notFound('That user could not be found.', 'USER_NOT_FOUND')
+  await db.contact.deleteMany({ where: { ownerId: auth.profile.id, contactId: target.id } })
+  return ok({ removed: true })
+})
+
+
+
+================================================================
+FILE: src\app\api\invites\route.ts
+================================================================
+import { handle, ok, unauthorized, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { generateInviteCode } from '@/lib/ids'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+
+export const dynamic = 'force-dynamic'
+
+/** My invite code + shareable link. */
+export const GET = handle(async (req: Request) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  // Behind a gateway/proxy, req.url's origin is the internal port â€” prefer the
+  // forwarded Host/Proto so shared links open for the recipient.
+  const h = req.headers
+  const proto = (h.get('x-forwarded-proto') ?? 'http').split(',')[0].trim()
+  const host = (h.get('x-forwarded-host') ?? h.get('host') ?? new URL(req.url).host).split(',')[0].trim()
+  const origin = `${proto}://${host}`
+  return ok({
+    inviteCode: auth.profile.inviteCode,
+    shareUrl: `${origin}/?invite=${auth.profile.inviteCode}`,
+    createdAt: auth.profile.createdAt.toISOString(),
+  })
+})
+
+/** Rotates (revokes) the current invite code â€” old links stop working. */
+export const POST = handle(async () => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`rotate:${auth.profile.id}`, LIMITS.inviteRotate.limit, LIMITS.inviteRotate.windowMs)) {
+    throw tooMany('You can rotate your invite code a few times per hour.', 1800)
+  }
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const profile = await db.profile.update({
+        where: { id: auth.profile.id },
+        data: { inviteCode: generateInviteCode() },
+      })
+      return ok({ inviteCode: profile.inviteCode })
+    } catch {
+      // rare unique collision â€” retry with a new code
+    }
+  }
+  throw tooMany('Could not rotate the code right now. Try again shortly.', 60)
+})
+
+
+
+================================================================
+FILE: src\app\api\invites\lookup\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, notFound, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { normalizeCode, isValidCodeShape } from '@/lib/ids'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Previews what an invite code points to BEFORE acting on it:
+ *  - user codes   ("XK7Q2M9P", 8 chars)  â†’ who the person is (minimal profile)
+ *  - group codes  ("GXK72M9P", 9 chars, leading G) â†’ group name + member count
+ *
+ * Deliberately minimal. Blocks (either direction, checked against every group
+ * member for group codes) return 404 so a blocked user cannot probe whether a
+ * code exists; self codes return 400.
+ */
+export const GET = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`invite-lookup:${auth.profile.id}`, LIMITS.inviteLookup.limit, LIMITS.inviteLookup.windowMs)) {
+    throw tooMany('Too many lookups. Slow down for a moment.', 60)
+  }
+
+  const raw = new URL(req.url).searchParams.get('code') ?? ''
+  const code = normalizeCode(raw)
+
+  // â”€â”€ Group codes: leading "G", 9 normalized chars â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  if (code.length === 9 && code.startsWith('G')) {
+    if (!isValidCodeShape(code, 9, 9)) {
+      throw badRequest('Group invite codes look like GXK72M9P.', 'INVALID_INVITE')
+    }
+    const candidates = [code, `G${code.slice(1, 5)}-${code.slice(5)}`]
+    const group = await db.conversation.findFirst({
+      where: { joinCode: { in: candidates }, type: 'group', status: 'active' },
+      include: { participants: { select: { userId: true } } },
+    })
+    if (!group || !group.name) {
+      throw notFound('No group is using this code. Check it and try again.', 'INVITE_NOT_FOUND')
+    }
+    const memberIds = group.participants.map((p) => p.userId)
+    if (memberIds.includes(auth.profile.id)) {
+      // Already a member â€” preview is harmless; joining is idempotent.
+      return ok({ type: 'group', group: { name: group.name, memberCount: memberIds.length, isMember: true } })
+    }
+    const blockedEitherWay = await db.blockedUser.findFirst({
+      where: {
+        OR: [
+          ...memberIds.map((m) => ({ blockerId: auth.profile.id, blockedId: m })),
+          ...memberIds.map((m) => ({ blockerId: m, blockedId: auth.profile.id })),
+        ],
+      },
+      select: { id: true },
+    })
+    if (blockedEitherWay) {
+      // Vague on purpose â€” same wording the join flow uses.
+      throw notFound('This invite code is not valid anymore.', 'INVITE_NOT_FOUND')
+    }
+    return ok({ type: 'group', group: { name: group.name, memberCount: memberIds.length, isMember: false } })
+  }
+
+  // â”€â”€ User codes (existing flow) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  if (!isValidCodeShape(code, 7, 8)) {
+    throw badRequest('Invite codes look like XK7Q2M9P (7â€“8 characters).', 'INVALID_INVITE')
+  }
+
+  // Codes are stored dashed ("XK7Q-2M9P"); accept dashed or plain input.
+  const candidates = [code]
+  if (code.length === 8) candidates.unshift(`${code.slice(0, 4)}-${code.slice(4)}`)
+
+  const owner = await db.profile.findFirst({
+    where: { inviteCode: { in: candidates } },
+    select: {
+      id: true,
+      publicId: true,
+      displayName: true,
+      avatarFileId: true,
+      presence: { select: { isOnline: true, lastSeenAt: true } },
+    },
+  })
+  if (!owner) throw notFound('No one is using this code. Check it and try again.', 'INVITE_NOT_FOUND')
+  if (owner.id === auth.profile.id) {
+    throw badRequest('That is your own invite code â€” share it with a friend!', 'SELF_INVITE')
+  }
+
+  const blockedEitherWay = await db.blockedUser.findFirst({
+    where: { OR: [{ blockerId: auth.profile.id, blockedId: owner.id }, { blockerId: owner.id, blockedId: auth.profile.id }] },
+    select: { id: true },
+  })
+  if (blockedEitherWay) {
+    // Vague on purpose â€” same wording the redeem flow uses.
+    throw notFound('This invite code is not valid anymore.', 'INVITE_NOT_FOUND')
+  }
+
+  return ok({
+    type: 'user',
+    profile: {
+      publicId: owner.publicId,
+      displayName: owner.displayName,
+      avatarUrl: owner.avatarFileId ? `/api/files/${owner.avatarFileId}` : null,
+      online: owner.presence?.isOnline ?? false,
+      lastSeenAt: owner.presence?.lastSeenAt?.toISOString() ?? null,
+    },
+  })
+})
+
+
+
+================================================================
+FILE: src\app\api\invites\redeem\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, notFound, tooMany, forbidden } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { normalizeCode, isValidCodeShape } from '@/lib/ids'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { createDirectConversation } from '@/lib/conversation-create'
+import { isExpirationPolicy } from '@/lib/expire'
+import { toConversationSummary, type ContactFlags } from '@/lib/dto'
+import { notifyUsers } from '@/lib/notify'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Redeems an invite code. The recipient's identity stays private (only a
+ * display name + public id are used). Invite messaging works even when the
+ * recipient disabled random-chat availability, but NEVER bypasses blocks.
+ * Chosen policy: redeemed conversations go straight to both inboxes.
+ */
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`redeem:${auth.profile.id}`, LIMITS.inviteRedeem.limit, LIMITS.inviteRedeem.windowMs)) {
+    throw tooMany('Too many invite attempts. Try again later.', 1800)
+  }
+  const body = await req.json().catch(() => ({}))
+  const code = normalizeCode(String(body?.code ?? ''))
+  if (!isValidCodeShape(code, 7, 8)) {
+    throw badRequest('Invite codes look like XK7Q2M9P (7â€“8 characters).', 'INVALID_INVITE')
+  }
+  const policy = isExpirationPolicy(body?.expirationPolicy) ? body.expirationPolicy : '24h'
+
+  // Codes are stored in dashed form ("XK7Q-2M9P"); accept dashed or plain input.
+  const candidates = [code]
+  if (code.length === 8) candidates.unshift(`${code.slice(0, 4)}-${code.slice(4)}`)
+  const recipient = await db.profile.findFirst({ where: { inviteCode: { in: candidates } } })
+  if (!recipient) throw notFound('This invite code is not valid anymore.', 'INVITE_NOT_FOUND')
+  if (recipient.id === auth.profile.id) {
+    throw badRequest('That is your own invite code.', 'SELF_INVITE')
+  }
+
+  // Block check happens inside createDirectConversation (both directions)
+  let conversation
+  try {
+    conversation = await createDirectConversation(auth.profile.id, recipient.id, policy)
+  } catch (err) {
+    if (err instanceof Error && (err as { code?: string }).code === 'BLOCKED') {
+      // Deliberately vague to avoid leaking whether the recipient blocked you
+      throw forbidden('This invite cannot be used right now.', 'INVITE_UNAVAILABLE')
+    }
+    throw err
+  }
+
+  // Realtime nudge so the recipient sees the new chat immediately
+  await notifyUsers([recipient.id, auth.profile.id], 'conversation:new', {
+    conversationId: conversation.id,
+    byPublicId: auth.profile.publicId,
+  })
+
+  const fresh = await db.conversation.findUnique({
+    where: { id: conversation.id },
+    include: { participants: { include: { user: { include: { presence: true } } } } },
+  })
+  if (!fresh) throw badRequest('Could not open the conversation.', 'CONVERSATION_LOST')
+  const contactRows = await db.contact.findMany({ where: { ownerId: auth.profile.id } })
+  const contacts: ContactFlags = new Map(
+    contactRows.map((c) => [c.contactId, { nickname: c.nickname, favorite: c.favorite }])
+  )
+  const presenceByUser = new Map(fresh.participants.map((q) => [q.userId, q.user.presence]))
+  const summary = await toConversationSummary(
+    fresh,
+    auth.profile.id,
+    fresh.participants,
+    presenceByUser,
+    contacts
+  )
+
+  return ok({ conversation: summary })
+})
+
+
+
+================================================================
+FILE: src\app\api\location\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, badRequest, forbidden, unauthorized } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit } from '@/lib/rate-limit'
+import { MAX_RADIUS_M } from '@/lib/geo'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Stores coordinates ONLY when nearby discovery is enabled. Coordinates are
+ * protected: they are never returned to any client â€” nearby results expose a
+ * rounded distance label computed server-side.
+ */
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`loc:${auth.profile.id}`, 30, 60_000)) {
+    throw badRequest('Location updates are too frequent.', 'RATE_LIMITED')
+  }
+
+  const profile = await db.profile.findUnique({ where: { id: auth.profile.id } })
+  if (!profile?.nearbyVisible) {
+    throw forbidden('Enable nearby visibility before sharing location.', 'DISCOVERY_DISABLED')
+  }
+
+  const body = await req.json().catch(() => ({}))
+  const lat = Number(body?.lat)
+  const lng = Number(body?.lng)
+  const accuracy = body?.accuracy !== undefined && body?.accuracy !== null ? Number(body.accuracy) : null
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    throw badRequest('Invalid coordinates.', 'INVALID_COORDS')
+  }
+  if (accuracy !== null && (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > MAX_RADIUS_M * 4)) {
+    throw badRequest('Invalid accuracy value.', 'INVALID_COORDS')
+  }
+
+  const location = await db.location.upsert({
+    where: { userId: auth.profile.id },
+    create: { userId: auth.profile.id, lat, lng, accuracy },
+    update: { lat, lng, accuracy },
+  })
+
+  return ok({ locationUpdatedAt: location.updatedAt.toISOString(), shared: true })
+})
+
+/** Opting out deletes stored coordinates immediately. */
+export const DELETE = handle(async () => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  await db.$transaction([
+    db.location.deleteMany({ where: { userId: auth.profile.id } }),
+    db.profile.update({ where: { id: auth.profile.id }, data: { nearbyVisible: false } }),
+  ])
+  return ok({ shared: false, nearbyVisible: false })
+})
+
+
+
+================================================================
+FILE: src\app\api\me\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, badRequest, unauthorized } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { toOwnProfile } from '@/lib/dto'
+import { db } from '@/lib/db'
+import { destroyFileRow } from '@/lib/uploads'
+
+export const dynamic = 'force-dynamic'
+
+const NAME_RE = /^[\p{L}\p{N} _.'-]{2,24}$/u
+
+export const GET = handle(async () => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const [presence, location] = await Promise.all([
+    db.presence.findUnique({ where: { userId: auth.profile.id } }),
+    db.location.findUnique({ where: { userId: auth.profile.id } }),
+  ])
+  return ok(toOwnProfile(auth.profile, presence, location))
+})
+
+export const PATCH = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const body = await req.json().catch(() => ({}))
+
+  const data: Record<string, unknown> = {}
+
+  if (body.displayName !== undefined) {
+    const trimmed = String(body.displayName).trim().replace(/\s+/g, ' ')
+    if (!NAME_RE.test(trimmed)) {
+      throw badRequest('Display name must be 2â€“24 letters, numbers or spaces.', 'INVALID_NAME')
+    }
+    data.displayName = trimmed
+  }
+
+  if (body.avatarFileId !== undefined) {
+    const fileId = body.avatarFileId === null ? null : String(body.avatarFileId)
+    if (fileId) {
+      const file = await db.file.findUnique({ where: { id: fileId } })
+      if (!file || file.ownerId !== auth.profile.id || file.kind !== 'avatar') {
+        throw badRequest('Invalid avatar upload.', 'INVALID_AVATAR')
+      }
+    }
+    const old = auth.profile.avatarFileId
+    data.avatarFileId = fileId
+    if (old && old !== fileId) {
+      await destroyFileRow(old) // replace previous avatar bytes
+    }
+  }
+
+  if (body.nearbyVisible !== undefined) {
+    const v = Boolean(body.nearbyVisible)
+    data.nearbyVisible = v
+    // Turning discovery off immediately removes stored coordinates.
+    if (!v) await db.location.deleteMany({ where: { userId: auth.profile.id } })
+  }
+
+  if (body.showInPeople !== undefined) {
+    data.showInPeople = Boolean(body.showInPeople)
+  }
+
+  if (body.notifyWhenPeopleOnline !== undefined) {
+    data.notifyWhenPeopleOnline = Boolean(body.notifyWhenPeopleOnline)
+  }
+
+  if (body.onlineNotificationAudience !== undefined) {
+    if (body.onlineNotificationAudience !== 'anyone' && body.onlineNotificationAudience !== 'friends') {
+      throw badRequest('Choose anyone or friends for online notifications.', 'INVALID_ONLINE_NOTIFICATION_AUDIENCE')
+    }
+    data.onlineNotificationAudience = body.onlineNotificationAudience
+  }
+
+  if (body.defaultStoryAudience !== undefined) {
+    const v = body.defaultStoryAudience === 'friends' ? 'friends' : 'public'
+    data.defaultStoryAudience = v
+  }
+
+  const profile = await db.profile.update({ where: { id: auth.profile.id }, data })
+  const [presence, location] = await Promise.all([
+    db.presence.findUnique({ where: { userId: profile.id } }),
+    db.location.findUnique({ where: { userId: profile.id } }),
+  ])
+  return ok(toOwnProfile(profile, presence, location))
+})
+
+
+
+================================================================
+FILE: src\app\api\moderation\reports\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, fail } from '@/lib/api-helpers'
+import { db } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Moderation review endpoint (server-to-server).
+ * Guarded by the MODERATION_TOKEN environment variable â€” when it is not set,
+ * the endpoint is disabled and reports are reviewed directly in the database.
+ * GET    â†’ list reports (filter ?status=open)
+ * PATCH  â†’ { reportId, status: open|reviewing|resolved|dismissed }
+ */
+function checkToken(req: NextRequest): Response | null {
+  const expected = process.env.MODERATION_TOKEN
+  if (!expected) {
+    return fail(503, 'MODERATION_DISABLED', 'Set MODERATION_TOKEN to enable the review API.')
+  }
+  const provided = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+  if (provided !== expected) return fail(401, 'UNAUTHORIZED', 'Invalid moderation token.')
+  return null
+}
+
+export const GET = handle(async (req: NextRequest) => {
+  const denied = checkToken(req)
+  if (denied) return denied
+
+  const status = new URL(req.url).searchParams.get('status')
+  const reports = await db.abuseReport.findMany({
+    where: status ? { status } : undefined,
+    include: {
+      reporter: { select: { publicId: true, displayName: true } },
+      reportedUser: { select: { publicId: true, displayName: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  })
+  return ok({
+    reports: reports.map((r) => ({
+      id: r.id,
+      reason: r.reason,
+      details: r.details,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      reporter: r.reporter,
+      reportedUser: r.reportedUser,
+      conversationId: r.conversationId,
+    })),
+  })
+})
+
+export const PATCH = handle(async (req: NextRequest) => {
+  const denied = checkToken(req)
+  if (denied) return denied
+  const body = await req.json().catch(() => ({}))
+  const { reportId, status } = body ?? {}
+  if (!reportId || !['open', 'reviewing', 'resolved', 'dismissed'].includes(status)) {
+    return fail(400, 'BAD_REQUEST', 'reportId and a valid status are required.')
+  }
+  const report = await db.abuseReport.update({
+    where: { id: String(reportId) },
+    data: { status, resolvedAt: ['resolved', 'dismissed'].includes(status) ? new Date() : null },
+  })
+  return ok({ id: report.id, status: report.status })
+})
+
+
+
+================================================================
+FILE: src\app\api\nearby\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, badRequest, unauthorized } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { haversineMeters, boundingBox, approximateDistance, MAX_RADIUS_M } from '@/lib/geo'
+import type { NearbyUser } from '@/lib/types'
+import { avatarUrlFor } from '@/lib/dto'
+
+export const dynamic = 'force-dynamic'
+
+/** Coordinates are treated as live for this long, then excluded from discovery. */
+export const LOCATION_FRESHNESS_MS = 15 * 60_000
+
+/**
+ * Nearby people: users who explicitly opted into discovery (nearbyVisible),
+ * are currently online (server-side presence), hold fresh coordinates and are
+ * not blocked (either direction). Exact coordinates never leave the server â€”
+ * only a rounded distance label.
+ */
+export const GET = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+
+  const url = new URL(req.url)
+  const radiusRaw = Number(url.searchParams.get('radius') ?? '1000')
+  if (!Number.isFinite(radiusRaw) || radiusRaw < 5 || radiusRaw > MAX_RADIUS_M) {
+    throw badRequest(`Radius must be between 5 and ${MAX_RADIUS_M} metres.`, 'INVALID_RADIUS')
+  }
+
+  const me = await db.profile.findUnique({
+    where: { id: auth.profile.id },
+    include: { location: true },
+  })
+  if (!me?.nearbyVisible || !me.location) {
+    return ok({ users: [], requiresLocation: true })
+  }
+  const myLoc = me.location
+  if (Date.now() - myLoc.updatedAt.getTime() > LOCATION_FRESHNESS_MS) {
+    return ok({ users: [], requiresLocation: true, stale: true })
+  }
+
+  const box = boundingBox(myLoc.lat, myLoc.lng, radiusRaw)
+  const freshnessCutoff = new Date(Date.now() - LOCATION_FRESHNESS_MS)
+
+  const candidates = await db.profile.findMany({
+    where: {
+      id: { not: me.id },
+      nearbyVisible: true,
+      location: { updatedAt: { gt: freshnessCutoff }, lat: { gte: box.minLat, lte: box.maxLat }, lng: { gte: box.minLng, lte: box.maxLng } },
+      presence: { isOnline: true },
+      // Neither side has blocked the other
+      blocksReceived: { none: { blockerId: me.id } },
+      blocksMade: { none: { blockedId: me.id } },
+    },
+    include: { location: true, presence: true },
+    take: 200,
+  })
+
+  const users: NearbyUser[] = candidates
+    .map((c) => {
+      const d = haversineMeters(myLoc.lat, myLoc.lng, c.location!.lat, c.location!.lng)
+      return { c, d }
+    })
+    .filter(({ d }) => d <= radiusRaw)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 50)
+    .map(({ c, d }) => {
+      const approx = approximateDistance(d)
+      return {
+        publicId: c.publicId,
+        displayName: c.displayName,
+        avatarUrl: avatarUrlFor(c.avatarFileId),
+        online: true,
+        lastSeenAt: null,
+        distanceMeters: approx.meters,
+        distanceLabel: approx.label,
+      }
+    })
+
+  return ok({ users, requiresLocation: false })
+})
+
+
+
+================================================================
+FILE: src\app\api\people\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { isConversationExpired } from '@/lib/expire'
+import { avatarUrlFor } from '@/lib/dto'
+import type { OnlinePerson } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
+
+/** A heartbeat is considered live for this long (matches realtime service). */
+const ONLINE_GRACE_MS = 75_000
+const MAX_RESULTS = 200
+
+/**
+ * People directory: EVERY online user (no matching, no queue).
+ *
+ * Returns users who are currently online (server-side presence â€” heartbeat
+ * fresh), chose to appear in the directory (showInPeople) and are not blocked
+ * (either direction). Each entry carries an existing conversation id so the
+ * client re-opens an ongoing chat instead of creating a duplicate.
+ */
+export const GET = handle(async (_req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+
+  const freshnessCutoff = new Date(Date.now() - ONLINE_GRACE_MS)
+
+  const candidates = await db.profile.findMany({
+    where: {
+      id: { not: meId },
+      showInPeople: true,
+      presence: { isOnline: true, lastHeartbeatAt: { gt: freshnessCutoff } },
+      // Neither side has blocked the other
+      blocksReceived: { none: { blockerId: meId } },
+      blocksMade: { none: { blockedId: meId } },
+    },
+    include: { presence: true },
+    orderBy: { presence: { lastHeartbeatAt: 'desc' } },
+    take: MAX_RESULTS,
+  })
+
+  // Map otherUserId â†’ most recent active conversation between us (if any)
+  const participations = await db.conversationParticipant.findMany({
+    where: { userId: meId },
+    include: { conversation: { include: { participants: true } } },
+    take: 500,
+  })
+  const convByOther = new Map<string, { id: string; updatedAt: Date }>()
+  for (const p of participations) {
+    const conv = p.conversation
+    if (conv.status !== 'active' || isConversationExpired(conv)) continue
+    if (conv.type !== 'direct') continue
+    const other = conv.participants.find((q) => q.userId !== meId)
+    if (!other) continue
+    const known = convByOther.get(other.userId)
+    if (!known || conv.updatedAt > known.updatedAt) {
+      convByOther.set(other.userId, { id: conv.id, updatedAt: conv.updatedAt })
+    }
+  }
+
+  // Favourited contacts (for the star UI)
+  const favorites = await db.contact.findMany({
+    where: { ownerId: meId, favorite: true },
+    select: { contactId: true },
+  })
+  const favIds = new Set(favorites.map((f) => f.contactId))
+
+  const users: OnlinePerson[] = candidates.map((c) => ({
+    publicId: c.publicId,
+    displayName: c.displayName,
+    avatarUrl: avatarUrlFor(c.avatarFileId),
+    online: true,
+    lastSeenAt: null,
+    conversationId: convByOther.get(c.id)?.id ?? null,
+    favorited: favIds.has(c.id),
+  }))
+
+  return ok({ users, count: users.length })
+})
+
+
+
+================================================================
+FILE: src\app\api\posts\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { notifyRoom } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
+import {
+  POST_MAX_LEN,
+  HOT_CANDIDATES,
+  FEED_TAKE,
+  toPostDTO,
+  notBlockedAuthor,
+  hotRank,
+} from '@/lib/posts'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Buzz feed â€” every text post on Ghostline, minus block-paired authors.
+ * sort=hot ranks by a decayed score (votes + comments); sort=new is plain
+ * recency. Votes themselves are not broadcast â€” the client optimistically
+ * patches and a 30s poll reconciles.
+ */
+export const GET = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+  const sort = req.nextUrl.searchParams.get('sort') === 'new' ? 'new' : 'hot'
+
+  const rows = await db.post.findMany({
+    where: {
+      ...notBlockedAuthor(meId),
+      createdAt: { gte: getPostRetentionCutoff() },
+    },
+    include: {
+      author: { include: { presence: true } },
+      votes: { where: { userId: meId }, select: { value: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: HOT_CANDIDATES,
+  })
+
+  let posts = rows.map((r) => toPostDTO(r, meId))
+  if (sort === 'hot') {
+    posts = posts.sort((a, b) => hotRank(b) - hotRank(a))
+  }
+  posts = posts.slice(0, FEED_TAKE)
+
+  return ok({ posts, sort })
+})
+
+/** Create a text post (no pictures, no videos â€” text only by design). */
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+
+  if (!rateLimit(`post:${meId}`, LIMITS.postCreate.limit, LIMITS.postCreate.windowMs)) {
+    throw tooMany('You are posting too fast. Take a breath and try later.', 3600)
+  }
+
+  const body = await req.json().catch(() => ({}))
+  const text = typeof body?.text === 'string' ? body.text.trim() : ''
+  const isAnonymous = body?.isAnonymous === true
+  if (!text) throw badRequest('Say something first â€” the post cannot be empty.', 'EMPTY_POST')
+  if (text.length > POST_MAX_LEN) {
+    throw badRequest(`Posts are limited to ${POST_MAX_LEN} characters.`, 'POST_TOO_LONG')
+  }
+
+  const post = await db.post.create({
+    data: { authorId: meId, text, isAnonymous },
+    include: { author: { include: { presence: true } }, votes: { where: { userId: meId }, select: { value: true } } },
+  })
+
+  // Everyone connected hears the new post instantly; offline clients poll.
+  void notifyRoom('feed', 'feed:update', { reason: 'post', postId: post.id })
+
+  return ok({ post: toPostDTO(post, meId) })
+})
+
+
+
+================================================================
+FILE: src\app\api\posts\[id]\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound, forbidden } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { notifyRoom } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ id: string }> }
+
+/** Delete own post. Votes and comments cascade away with it. */
+export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const { id } = await ctx.params
+
+  const post = await db.post.findFirst({
+    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
+    select: { id: true, authorId: true },
+  })
+  if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
+  if (post.authorId !== auth.profile.id) {
+    throw forbidden('Only the author can delete this post.', 'NOT_POST_AUTHOR')
+  }
+
+  await db.post.delete({ where: { id } })
+  void notifyRoom('feed', 'feed:update', { reason: 'post_deleted', postId: id })
+
+  return ok({ deleted: true })
+})
+
+
+
+================================================================
+FILE: src\app\api\posts\[id]\comments\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound, badRequest, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { notifyRoom, notifyUsers } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
+import { COMMENT_MAX_LEN, toPostDTO, toCommentDTO, notBlockedAuthor } from '@/lib/posts'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ id: string }> }
+
+const COMMENT_TAKE = 200
+
+/**
+ * Comments under a post. GET returns the post itself plus its visible
+ * comments (block-paired authors are hidden) so a thread view is
+ * self-sufficient. Comments are ordered oldest â†’ newest (conversation flow).
+ */
+export const GET = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+  const { id } = await ctx.params
+
+  const post = await db.post.findFirst({
+    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
+    include: {
+      author: { include: { presence: true } },
+      votes: { where: { userId: meId }, select: { value: true } },
+    },
+  })
+  if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
+
+  const rows = await db.postComment.findMany({
+    where: { postId: id, ...notBlockedAuthor(meId) },
+    include: { author: { include: { presence: true } } },
+    orderBy: { createdAt: 'asc' },
+    take: COMMENT_TAKE,
+  })
+
+  return ok({ post: toPostDTO(post, meId), comments: rows.map((c) => toCommentDTO(c, meId)) })
+})
+
+/** Add a comment under a post. Text only, same length cap as posts. */
+export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+  const { id } = await ctx.params
+
+  if (!rateLimit(`comment:${meId}`, LIMITS.postComment.limit, LIMITS.postComment.windowMs)) {
+    throw tooMany('You are commenting too fast. Try again a bit later.', 1800)
+  }
+
+  const body = await req.json().catch(() => ({}))
+  const text = typeof body?.text === 'string' ? body.text.trim() : ''
+  const isAnonymous = body?.isAnonymous === true
+  if (!text) throw badRequest('Comments cannot be empty.', 'EMPTY_COMMENT')
+  if (text.length > COMMENT_MAX_LEN) {
+    throw badRequest(`Comments are limited to ${COMMENT_MAX_LEN} characters.`, 'COMMENT_TOO_LONG')
+  }
+
+  const post = await db.post.findFirst({
+    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
+    select: {
+      id: true,
+      authorId: true,
+      comments: {
+        where: { authorId: { not: meId } },
+        select: { authorId: true },
+        distinct: ['authorId'],
+      },
+    },
+  })
+  if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
+
+  const [comment, updated] = await db.$transaction([
+    db.postComment.create({
+      data: { postId: id, authorId: meId, text, isAnonymous },
+      include: { author: { include: { presence: true } } },
+    }),
+    db.post.update({ where: { id }, data: { commentCount: { increment: 1 } }, select: { commentCount: true } }),
+  ])
+
+  void notifyRoom('feed', 'feed:update', { reason: 'comment', postId: id })
+
+  const commenters = new Set(post.comments.map((existing) => existing.authorId))
+  const otherCommenters = [...commenters].filter(
+    (authorId) => authorId !== meId && authorId !== post.authorId
+  )
+  await Promise.all([
+    post.authorId !== meId
+      ? notifyUsers([post.authorId], 'buzz:notification', {
+          title: 'Buzz',
+          body: 'Someone commented on your post.',
+          tag: `buzz-post-${id}`,
+          url: '/?tab=feed',
+          postId: id,
+        })
+      : Promise.resolve(),
+    otherCommenters.length > 0
+      ? notifyUsers(otherCommenters, 'buzz:notification', {
+          title: 'Buzz',
+          body: 'Someone commented on a post you contributed to.',
+          tag: `buzz-post-${id}`,
+          url: '/?tab=feed',
+          postId: id,
+        })
+      : Promise.resolve(),
+  ])
+
+  return ok({ comment: toCommentDTO(comment, meId), commentCount: updated.commentCount })
+})
+
+
+
+================================================================
+FILE: src\app\api\posts\[id]\comments\[commentId]\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound, forbidden } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { notifyRoom } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ id: string; commentId: string }> }
+
+/**
+ * Delete a comment. Allowed for its author â€” and for the post author
+ * (thread owner moderates their own post). Keeps the cached counter at 0+.
+ */
+export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+  const { id, commentId } = await ctx.params
+
+  const [post, comment] = await Promise.all([
+    db.post.findFirst({
+      where: { id, createdAt: { gte: getPostRetentionCutoff() } },
+      select: { id: true, authorId: true },
+    }),
+    db.postComment.findFirst({ where: { id: commentId, postId: id }, select: { id: true, authorId: true } }),
+  ])
+  if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
+  if (!comment) throw notFound('That comment is gone.', 'COMMENT_NOT_FOUND')
+
+  const canDelete = comment.authorId === meId || post.authorId === meId
+  if (!canDelete) {
+    throw forbidden('Only the comment author or the post author can remove a comment.', 'NOT_COMMENT_AUTHOR')
+  }
+
+  const [, updated] = await db.$transaction([
+    db.postComment.delete({ where: { id: comment.id } }),
+    db.post.update({ where: { id }, data: { commentCount: { decrement: 1 } }, select: { commentCount: true } }),
+  ])
+
+  void notifyRoom('feed', 'feed:update', { reason: 'comment_deleted', postId: id })
+
+  return ok({ deleted: true, commentCount: Math.max(0, updated.commentCount) })
+})
+
+
+
+================================================================
+FILE: src\app\api\posts\[id]\vote\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound, badRequest, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { recomputeVoteScore } from '@/lib/posts'
+import { notifyUsers } from '@/lib/notify'
+import { getPostRetentionCutoff } from '@/lib/post-retention'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ id: string }> }
+
+/**
+ * Vote on a post: { value: 1 } like, { value: -1 } dislike, { value: 0 }
+ * clears my vote. One vote per user per post (unique constraint) â€” voting the
+ * other way switches it. Self-votes are refused (no score farming).
+ */
+export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+  const { id } = await ctx.params
+
+  if (!rateLimit(`postvote:${meId}`, LIMITS.postVote.limit, LIMITS.postVote.windowMs)) {
+    throw tooMany('Too many votes â€” slow down a little.', 600)
+  }
+
+  const body = await req.json().catch(() => ({}))
+  const value = typeof body?.value === 'number' ? Math.trunc(body.value) : NaN
+  if (value !== 1 && value !== -1 && value !== 0) {
+    throw badRequest('Vote must be 1 (like), -1 (dislike) or 0 (clear).', 'INVALID_VOTE')
+  }
+
+  const post = await db.post.findFirst({
+    where: { id, createdAt: { gte: getPostRetentionCutoff() } },
+    select: { id: true, authorId: true },
+  })
+  if (!post) throw notFound('That post is gone.', 'POST_NOT_FOUND')
+  if (post.authorId === meId) {
+    throw badRequest('You cannot vote on your own post.', 'SELF_VOTE')
+  }
+
+  const previousVote = await db.postVote.findUnique({
+    where: { postId_userId: { postId: id, userId: meId } },
+    select: { value: true },
+  })
+
+  if (value === 0) {
+    await db.postVote.deleteMany({ where: { postId: id, userId: meId } })
+  } else {
+    // Upsert â€” switching direction updates the existing row in place.
+    await db.postVote.upsert({
+      where: { postId_userId: { postId: id, userId: meId } },
+      create: { postId: id, userId: meId, value },
+      update: { value },
+    })
+  }
+
+  const voteScore = await recomputeVoteScore(id)
+  if (value !== 0 && previousVote?.value !== value) {
+    await notifyUsers([post.authorId], 'buzz:notification', {
+      title: 'Buzz',
+      body: 'Someone voted on your post.',
+      tag: `buzz-post-${id}`,
+      url: '/?tab=feed',
+      postId: id,
+    })
+  }
+  return ok({ voteScore, myVote: value })
+})
+
+
+
+================================================================
+FILE: src\app\api\push\subscribe\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { isPushConfigured } from '@/lib/push'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Registers (or refreshes) a Web Push subscription for the signed-in user.
+ * Body: { endpoint, keys: { p256dh, auth }, userAgent? }
+ */
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`push-sub:${auth.profile.id}`, LIMITS.general.limit, LIMITS.general.windowMs)) {
+    throw tooMany('Too many requests. Try again shortly.', 60)
+  }
+  if (!isPushConfigured()) {
+    throw badRequest('Push notifications are not available on this server.', 'PUSH_DISABLED')
+  }
+
+  const body = await req.json().catch(() => null)
+  const endpoint = typeof body?.endpoint === 'string' ? body.endpoint.slice(0, 1024) : ''
+  const p256dh = typeof body?.keys?.p256dh === 'string' ? body.keys.p256dh.slice(0, 256) : ''
+  const authSecret = typeof body?.keys?.auth === 'string' ? body.keys.auth.slice(0, 256) : ''
+  const userAgent = typeof body?.userAgent === 'string' ? body.userAgent.slice(0, 256) : null
+
+  if (!endpoint.startsWith('https://') || !p256dh || !authSecret) {
+    throw badRequest('Invalid push subscription payload.', 'INVALID_SUBSCRIPTION')
+  }
+
+  // Keep a sane cap per user: drop the oldest beyond 8 devices.
+  const existing = await db.pushSubscription.findMany({
+    where: { userId: auth.profile.id },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  if (existing.length >= 8) {
+    const excess = existing.slice(0, existing.length - 7)
+    await db.pushSubscription.deleteMany({ where: { id: { in: excess.map((s) => s.id) } } })
+  }
+
+  const sub = await db.pushSubscription.upsert({
+    where: { endpoint },
+    create: { userId: auth.profile.id, endpoint, p256dh, auth: authSecret, userAgent },
+    update: { p256dh, auth: authSecret, userAgent, userId: auth.profile.id },
+    select: { id: true },
+  })
+
+  return ok({ subscribed: true, id: sub.id })
+})
+
+/** Removes one subscription (by endpoint) or all of the user's subscriptions. */
+export const DELETE = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const body = await req.json().catch(() => ({}))
+  const endpoint = typeof body?.endpoint === 'string' ? body.endpoint.slice(0, 1024) : ''
+  if (endpoint) {
+    await db.pushSubscription.deleteMany({
+      where: { userId: auth.profile.id, endpoint },
+    })
+  } else {
+    await db.pushSubscription.deleteMany({ where: { userId: auth.profile.id } })
+  }
+  return ok({ unsubscribed: true })
+})
+
+
+
+================================================================
+FILE: src\app\api\reports\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+
+export const dynamic = 'force-dynamic'
+
+const REASONS = ['harassment', 'spam', 'inappropriate_content', 'impersonation', 'underage', 'other']
+
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`report:${auth.profile.id}`, LIMITS.report.limit, LIMITS.report.windowMs)) {
+    throw tooMany('Too many reports submitted. Our moderators will review the earlier ones.', 3600)
+  }
+  const body = await req.json().catch(() => ({}))
+  const reason = String(body?.reason ?? '')
+  if (!REASONS.includes(reason)) throw badRequest('Please pick a valid reason.', 'INVALID_REASON')
+
+  const details = typeof body?.details === 'string' ? body.details.slice(0, 1000).trim() : null
+  let reportedUserId: string | null = null
+  let conversationId: string | null = null
+
+  if (body?.publicId) {
+    const target = await db.profile.findUnique({ where: { publicId: String(body.publicId) } })
+    if (!target) throw badRequest('Reported user not found.', 'USER_NOT_FOUND')
+    reportedUserId = target.id
+  }
+  if (body?.postId) {
+    const post = await db.post.findUnique({
+      where: { id: String(body.postId) },
+      select: { authorId: true },
+    })
+    if (!post) throw badRequest('Reported post not found.', 'POST_NOT_FOUND')
+    reportedUserId = post.authorId
+  }
+  if (body?.conversationId) {
+    const conv = await db.conversation.findUnique({ where: { id: String(body.conversationId) } })
+    if (!conv) throw badRequest('Reported conversation not found.', 'CONVERSATION_NOT_FOUND')
+    const participant = await db.conversationParticipant.findFirst({
+      where: { conversationId: conv.id, userId: auth.profile.id },
+    })
+    if (!participant) throw badRequest('You can only report conversations you take part in.', 'NOT_PARTICIPANT')
+    conversationId = conv.id
+  }
+  if (!reportedUserId && !conversationId) {
+    throw badRequest('Specify a user or a conversation to report.', 'MISSING_TARGET')
+  }
+
+  const report = await db.abuseReport.create({
+    data: { reporterId: auth.profile.id, reportedUserId, conversationId, reason, details },
+  })
+  return ok({ reportId: report.id, message: 'Thank you. Our moderation team will review this report.' })
+})
+
+
+
+================================================================
+FILE: src\app\api\stories\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, badRequest, tooMany } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { rateLimit, LIMITS } from '@/lib/rate-limit'
+import { STORY_TTL_HOURS } from '@/lib/expire'
+import { toStoryDTO, avatarUrlFor } from '@/lib/dto'
+import type { StoryGroup } from '@/lib/types'
+import { addHours } from 'date-fns'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * Story feed, grouped by owner. Server-side audience enforcement:
+ * - own stories: always visible
+ * - public: visible to all eligible users (not blocked either way)
+ * - friends: visible only to users the CREATOR saved as contacts
+ * Expired stories are excluded (sweep deletes them within a minute).
+ */
+export const GET = handle(async () => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const meId = auth.profile.id
+
+  const whoSavedMe = await db.contact.findMany({ where: { contactId: meId }, select: { ownerId: true } })
+
+  const stories = await db.story.findMany({
+    where: {
+      status: 'active',
+      expiresAt: { gt: new Date() },
+      ownerId: { not: meId },
+      audience: 'public', // friends-only stories are fetched separately below
+      owner: {
+        blocksReceived: { none: { blockerId: meId } },
+        blocksMade: { none: { blockedId: meId } },
+      },
+    },
+    include: { owner: { include: { presence: true } }, views: { where: { viewerId: meId } } },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  })
+
+  // Friends-only stories: creators who saved me AND are blocked-free both ways
+  const friendIds = whoSavedMe.map((c) => c.ownerId).filter(Boolean)
+  const friendStories = friendIds.length
+    ? await db.story.findMany({
+        where: {
+          ownerId: { in: friendIds },
+          audience: 'friends',
+          status: 'active',
+          expiresAt: { gt: new Date() },
+        },
+        include: { owner: { include: { presence: true } }, views: { where: { viewerId: meId } } },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      })
+    : []
+
+  const friendOwners = await db.profile.findMany({
+    where: { id: { in: friendIds } },
+    select: { id: true, blocksMade: { select: { blockedId: true } }, blocksReceived: { select: { blockerId: true } } },
+  })
+  const friendAllowed = new Set(
+    friendOwners
+      .filter((o) => !o.blocksMade.some((b) => b.blockedId === meId) && !o.blocksReceived.some((b) => b.blockerId === meId))
+      .map((o) => o.id)
+  )
+
+  const eligible = [
+    ...stories,
+    ...friendStories.filter((s) => friendAllowed.has(s.ownerId)),
+  ]
+
+  // Own stories
+  const myStories = await db.story.findMany({
+    where: { ownerId: meId, status: 'active', expiresAt: { gt: new Date() } },
+    include: { owner: { include: { presence: true } }, views: { where: { viewerId: meId } } },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  const groups = new Map<string, StoryGroup>()
+
+  const push = (
+    s: (typeof eligible)[number],
+    isOwn: boolean
+  ) => {
+    const g = groups.get(s.ownerId) ?? {
+      owner: {
+        publicId: s.owner.publicId,
+        displayName: s.owner.displayName,
+        avatarUrl: avatarUrlFor(s.owner.avatarFileId),
+        online: s.owner.presence?.isOnline ?? false,
+        isOwn,
+      },
+      stories: [],
+      hasUnseen: false,
+    }
+    g.stories.push(
+      toStoryDTO(s, s.owner.publicId, { isOwn, viewedByMe: isOwn ? true : s.views.length > 0 })
+    )
+    if (isOwn ? false : s.views.length === 0) g.hasUnseen = true
+    groups.set(s.ownerId, g)
+  }
+
+  for (const s of myStories) push(s, true)
+  for (const s of eligible) push(s, false)
+
+  const feed = [...groups.values()].sort((a, b) => {
+    if (a.owner.isOwn !== b.owner.isOwn) return a.owner.isOwn ? -1 : 1
+    if (a.hasUnseen !== b.hasUnseen) return a.hasUnseen ? -1 : 1
+    return 0
+  })
+
+  return ok({ groups: feed })
+})
+
+export const POST = handle(async (req: NextRequest) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  if (!rateLimit(`story:${auth.profile.id}`, LIMITS.storyCreate.limit, LIMITS.storyCreate.windowMs)) {
+    throw tooMany('You are posting stories too quickly.', 600)
+  }
+  const body = await req.json().catch(() => ({}))
+  const type = ['text', 'image', 'video'].includes(body?.type) ? body.type : null
+  if (!type) throw badRequest('Story type must be text, image or video.', 'INVALID_TYPE')
+
+  const audience = body?.audience === 'friends' ? 'friends' : 'public'
+  const text = typeof body?.text === 'string' ? body.text.slice(0, 500).trim() : ''
+  const fileId = body?.fileId ? String(body.fileId) : null
+
+  if (type === 'text' && !text) throw badRequest('A text story needs content.', 'EMPTY_STORY')
+  if (type !== 'text') {
+    if (!fileId) throw badRequest('Media is required for image/video stories.', 'MEDIA_REQUIRED')
+    const file = await db.file.findUnique({ where: { id: fileId } })
+    if (!file || file.ownerId !== auth.profile.id) throw badRequest('Invalid media.', 'INVALID_MEDIA')
+    const expectedKind = type === 'image' ? ['image'] : ['video']
+    if (!expectedKind.includes(file.kind)) throw badRequest('Media does not match the story type.', 'INVALID_MEDIA')
+  }
+
+  // Default 24h lifetime, enforced server-side â€” stories are NOT chats.
+  const story = await db.story.create({
+    data: {
+      ownerId: auth.profile.id,
+      type,
+      text: text || null,
+      fileId,
+      audience,
+      expiresAt: addHours(new Date(), STORY_TTL_HOURS),
+    },
+  })
+
+  return ok({
+    story: toStoryDTO(story, auth.profile.publicId, { isOwn: true, viewedByMe: true }),
+  })
+})
+
+
+
+================================================================
+FILE: src\app\api\stories\[id]\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { destroyFileRow } from '@/lib/uploads'
+import { notifyUsers } from '@/lib/notify'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ id: string }> }
+
+/** Owners can delete their stories at any time. */
+export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const { id } = await ctx.params
+  const story = await db.story.findUnique({ where: { id } })
+  if (!story || story.ownerId !== auth.profile.id) throw notFound('Story not found.', 'STORY_NOT_FOUND')
+
+  await db.story.delete({ where: { id } }) // cascades views
+  await destroyFileRow(story.fileId)
+  return ok({ deleted: true })
+})
+
+
+
+================================================================
+FILE: src\app\api\stories\[id]\view\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound, forbidden } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ id: string }> }
+
+/**
+ * Records a view. Access rule is enforced here (same as the feed): audience
+ * 'friends' requires the creator to have saved the viewer as a contact.
+ */
+export const POST = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const { id } = await ctx.params
+  const story = await db.story.findUnique({ where: { id }, include: { owner: true } })
+  if (!story || story.status !== 'active' || story.expiresAt.getTime() <= Date.now()) {
+    throw notFound('This story is no longer available.', 'STORY_NOT_FOUND')
+  }
+
+  if (story.ownerId !== auth.profile.id) {
+    if (story.audience === 'friends') {
+      const saved = await db.contact.findFirst({
+        where: { ownerId: story.ownerId, contactId: auth.profile.id },
+      })
+      if (!saved) throw forbidden('This story is only visible to friends of its creator.', 'STORY_FORBIDDEN')
+    }
+    const blocked = await db.blockedUser.findFirst({
+      where: { OR: [{ blockerId: story.ownerId, blockedId: auth.profile.id }, { blockerId: auth.profile.id, blockedId: story.ownerId }] },
+    })
+    if (blocked) throw forbidden('This story is not available.', 'STORY_FORBIDDEN')
+  }
+
+  await db.storyView.upsert({
+    where: { storyId_viewerId: { storyId: id, viewerId: auth.profile.id } },
+    create: { storyId: id, viewerId: auth.profile.id },
+    update: { viewedAt: new Date() },
+  })
+
+  const count = await db.storyView.count({ where: { storyId: id } })
+  return ok({ viewCount: count })
+})
+
+
+
+================================================================
+FILE: src\app\api\stories\[id]\viewers\route.ts
+================================================================
+import { NextRequest } from 'next/server'
+import { handle, ok, unauthorized, notFound } from '@/lib/api-helpers'
+import { getAuth } from '@/lib/session'
+import { db } from '@/lib/db'
+import { avatarUrlFor } from '@/lib/dto'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: Promise<{ id: string }> }
+
+/** Viewer list â€” owner only (privacy setting could disable this later). */
+export const GET = handle(async (_req: NextRequest, ctx: Ctx) => {
+  const auth = await getAuth()
+  if (!auth) throw unauthorized()
+  const { id } = await ctx.params
+  const story = await db.story.findUnique({ where: { id } })
+  if (!story || story.ownerId !== auth.profile.id) throw notFound('Story not found.', 'STORY_NOT_FOUND')
+
+  const views = await db.storyView.findMany({
+    where: { storyId: id },
+    include: { viewer: { include: { presence: true } } },
+    orderBy: { viewedAt: 'desc' },
+    take: 100,
+  })
+
+  return ok({
+    viewers: views.map((v) => ({
+      publicId: v.viewer.publicId,
+      displayName: v.viewer.displayName,
+      avatarUrl: avatarUrlFor(v.viewer.avatarFileId),
+      online: v.viewer.presence?.isOnline ?? false,
+      viewedAt: v.viewedAt.toISOString(),
+    })),
+  })
+})
+

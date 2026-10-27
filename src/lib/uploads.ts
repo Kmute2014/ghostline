@@ -1,6 +1,5 @@
-
-import { db } from '@/lib/db'
-import { ApiError, badRequest } from '@/lib/api-helpers'
+import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
+import { ApiError } from '@/lib/api-helpers'
 
 export const UPLOAD_LIMITS = {
   image: 8 * 1024 * 1024,
@@ -11,8 +10,8 @@ export const UPLOAD_LIMITS = {
 export type UploadKind = 'image' | 'video' | 'avatar'
 
 /**
- * Media uploads are temporarily disabled while Hushly migrates away
- * from Firebase Storage. No new file bytes are stored.
+ * Media uploads remain disabled during the Hushly migration. No new media
+ * bytes are stored by this application.
  */
 export async function saveUpload(
   _raw: File,
@@ -32,10 +31,7 @@ export async function saveUpload(
   )
 }
 
-/**
- * Existing media metadata may remain in the database, but the original
- * file contents are no longer served through this helper.
- */
+/** Existing media bytes are no longer served through this helper. */
 export async function loadStoredFile(_fileId: string): Promise<never> {
   throw new ApiError(
     410,
@@ -44,27 +40,23 @@ export async function loadStoredFile(_fileId: string): Promise<never> {
   )
 }
 
-/**
- * Remove file metadata when called by existing cleanup code.
- * This does not delete any previously stored cloud objects.
- */
+/** Remove Firestore file metadata; this does not delete cloud storage objects. */
 export async function destroyFileRow(
   fileId: string | null | undefined,
 ): Promise<void> {
   if (!fileId) return
 
-  const row = await db.file.findUnique({ where: { id: fileId } })
-  if (!row) return
+  const firestore = getFirebaseAdminFirestore()
+  const fileRef = firestore.collection('files').doc(fileId)
+  const snapshot = await fileRef.get()
+  if (!snapshot.exists) return
 
-  await db.file.delete({ where: { id: row.id } })
+  await fileRef.delete()
 }
 
-/**
- * Kept temporarily for compatibility with existing callers.
- * Firebase Storage is no longer accessed.
- */
+/** Kept for compatibility; external storage cleanup is intentionally disabled. */
 export async function unlinkByStoragePath(
   _storagePath: string | null | undefined,
 ): Promise<void> {
-  // Intentionally no-op. Storage cleanup is not performed here.
+  // Intentionally no-op. Previously stored cloud objects are not deleted here.
 }
