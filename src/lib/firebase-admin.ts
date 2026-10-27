@@ -11,7 +11,6 @@ import {
   FieldValue,
   getFirestore,
 } from 'firebase-admin/firestore'
-import { getStorage } from 'firebase-admin/storage'
 
 let adminApp: App | undefined
 
@@ -65,18 +64,6 @@ function getAdminApp(): App {
 
 export function getFirebaseAdminFirestore() {
   return getFirestore(getAdminApp())
-}
-
-export function getFirebaseStorageBucket() {
-  const bucketName = process.env.FIREBASE_STORAGE_BUCKET
-
-  if (!bucketName) {
-    throw new Error(
-      'FIREBASE_STORAGE_BUCKET must be configured to use Firebase Storage.',
-    )
-  }
-
-  return getStorage(getAdminApp()).bucket(bucketName)
 }
 
 export function createFirebaseCustomToken(
