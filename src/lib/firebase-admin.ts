@@ -1,6 +1,16 @@
-import { applicationDefault, getApps, initializeApp, type App } from 'firebase-admin/app'
+
+import {
+  applicationDefault,
+  cert,
+  getApps,
+  initializeApp,
+  type App,
+} from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { FieldValue, getFirestore } from 'firebase-admin/firestore'
+import {
+  FieldValue,
+  getFirestore,
+} from 'firebase-admin/firestore'
 import { getStorage } from 'firebase-admin/storage'
 
 let adminApp: App | undefined
@@ -9,26 +19,69 @@ function getAdminApp(): App {
   if (adminApp) return adminApp
 
   const existingApp = getApps()[0]
-  adminApp =
-    existingApp ??
-    initializeApp({
-      credential: applicationDefault(),
-      projectId: process.env.GOOGLE_CLOUD_PROJECT ?? process.env.FIREBASE_PROJECT_ID,
+  if (existingApp) {
+    adminApp = existingApp
+    return adminApp
+  }
+
+  const projectId =
+    process.env.GOOGLE_CLOUD_PROJECT ??
+    process.env.FIREBASE_PROJECT_ID ??
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+
+  const serviceAccountValue =
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON ??
+    (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64
+      ? Buffer.from(
+          process.env.FIREBASE_SERVICE_ACCOUNT_BASE64,
+          'base64',
+        ).toString('utf8')
+      : undefined)
+
+  if (serviceAccountValue) {
+    let serviceAccount
+
+    try {
+      serviceAccount = JSON.parse(serviceAccountValue)
+    } catch {
+      throw new Error(
+        'Firebase service-account environment variable is not valid JSON.',
+      )
+    }
+
+    adminApp = initializeApp({
+      credential: cert(serviceAccount),
+      ...(projectId ? { projectId } : {}),
     })
+  } else {
+    adminApp = initializeApp({
+      credential: applicationDefault(),
+      ...(projectId ? { projectId } : {}),
+    })
+  }
 
   return adminApp
 }
 
+export function getFirebaseAdminFirestore() {
+  return getFirestore(getAdminApp())
+}
+
 export function getFirebaseStorageBucket() {
   const bucketName = process.env.FIREBASE_STORAGE_BUCKET
+
   if (!bucketName) {
-    throw new Error('FIREBASE_STORAGE_BUCKET must be configured to use Firebase Storage.')
+    throw new Error(
+      'FIREBASE_STORAGE_BUCKET must be configured to use Firebase Storage.',
+    )
   }
 
   return getStorage(getAdminApp()).bucket(bucketName)
 }
 
-export function createFirebaseCustomToken(userId: string): Promise<string> {
+export function createFirebaseCustomToken(
+  userId: string,
+): Promise<string> {
   return getAuth(getAdminApp()).createCustomToken(userId)
 }
 
@@ -37,14 +90,19 @@ export async function publishFirebaseUserEvent(
   event: string,
   payload: unknown,
 ): Promise<void> {
-  const firestore = getFirestore(getAdminApp())
+  const firestore = getFirebaseAdminFirestore()
   const uniqueIds = [...new Set(userIds)]
 
   for (let offset = 0; offset < uniqueIds.length; offset += 400) {
     const batch = firestore.batch()
-    const targets = uniqueIds.slice(offset, offset + 400)
-    for (const userId of targets) {
-      const eventRef = firestore.collection('realtimeUsers').doc(userId).collection('events').doc()
+
+    for (const userId of uniqueIds.slice(offset, offset + 400)) {
+      const eventRef = firestore
+        .collection('realtimeUsers')
+        .doc(userId)
+        .collection('events')
+        .doc()
+
       batch.create(eventRef, {
         event,
         payload,
@@ -52,6 +110,7 @@ export async function publishFirebaseUserEvent(
         expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       })
     }
+
     await batch.commit()
   }
 }
@@ -65,11 +124,13 @@ export async function publishFirebaseBroadcastEvent(
     throw new Error(`Unsupported public Firebase realtime room: ${room}`)
   }
 
-  await getFirestore(getAdminApp()).collection('realtimeBroadcasts').add({
-    room,
-    event,
-    payload,
-    createdAt: FieldValue.serverTimestamp(),
-    expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  })
+  await getFirebaseAdminFirestore()
+    .collection('realtimeBroadcasts')
+    .add({
+      room,
+      event,
+      payload,
+      createdAt: FieldValue.serverTimestamp(),
+      expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    })
 }
