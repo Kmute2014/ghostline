@@ -1,0 +1,3249 @@
+﻿
+
+================================================================
+FILE: firebase.json
+================================================================
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
+
+
+
+================================================================
+FILE: mini-services\realtime\index.ts
+================================================================
+/**
+ * Standalone entry for the Ghostline realtime service.
+ * Production deployment: `bun run dev` in this folder (or run.sh with auto-restart).
+ * In the sandbox, src/instrumentation.ts starts the SAME service in-process if
+ * this standalone instance is not running â€” the port guard makes both safe.
+ *
+ * Cloud Run exposes the service port via PORT. Map it to RT_PORT here â€” the
+ * in-process boot must never honor PORT, because Next.js
+ * sets PORT for its own HTTP server and the realtime service would try to bind
+ * the app's port.
+ */
+if (!process.env.RT_PORT && process.env.PORT) {
+  process.env.RT_PORT = process.env.PORT
+}
+
+import { startRealtimeService } from './service'
+
+startRealtimeService().catch((e) => {
+  console.error('[rt] failed to start:', e)
+  process.exit(1)
+})
+
+process.on('SIGTERM', () => process.exit(0))
+process.on('SIGINT', () => process.exit(0))
+
+
+
+================================================================
+FILE: mini-services\realtime\package.json
+================================================================
+
+{
+  "name": "ghostline-realtime",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
+
+
+
+================================================================
+FILE: mini-services\realtime\package-lock.json
+================================================================
+{
+  "name": "realtime",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "realtime",
+      "version": "1.0.0",
+      "license": "ISC",
+      "dependencies": {
+        "cors": "^2.8.6",
+        "express": "^5.3.0",
+        "socket.io": "^4.8.4",
+        "web-push": "^3.6.7"
+      },
+      "devDependencies": {
+        "@types/bun": "latest"
+      },
+      "peerDependencies": {
+        "typescript": "^5"
+      }
+    },
+    "node_modules/@socket.io/component-emitter": {
+      "version": "3.1.2",
+      "resolved": "https://registry.npmjs.org/@socket.io/component-emitter/-/component-emitter-3.1.2.tgz",
+      "integrity": "sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==",
+      "license": "MIT"
+    },
+    "node_modules/@types/bun": {
+      "version": "1.4.4",
+      "resolved": "https://registry.npmjs.org/@types/bun/-/bun-1.4.4.tgz",
+      "integrity": "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "bun-types": "1.4.4"
+      }
+    },
+    "node_modules/@types/cors": {
+      "version": "2.8.19",
+      "resolved": "https://registry.npmjs.org/@types/cors/-/cors-2.8.19.tgz",
+      "integrity": "sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==",
+      "license": "MIT",
+      "dependencies": {
+        "@types/node": "*"
+      }
+    },
+    "node_modules/@types/node": {
+      "version": "26.6.5",
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-26.6.5.tgz",
+      "integrity": "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==",
+      "license": "MIT",
+      "dependencies": {
+        "undici-types": "~8.9.0"
+      }
+    },
+    "node_modules/@types/node/node_modules/undici-types": {
+      "version": "8.9.0",
+      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-8.9.0.tgz",
+      "integrity": "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==",
+      "license": "MIT"
+    },
+    "node_modules/@types/ws": {
+      "version": "8.18.2",
+      "resolved": "https://registry.npmjs.org/@types/ws/-/ws-8.18.2.tgz",
+      "integrity": "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==",
+      "license": "MIT",
+      "dependencies": {
+        "@types/node": "*"
+      }
+    },
+    "node_modules/accepts": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/accepts/-/accepts-2.0.0.tgz",
+      "integrity": "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-types": "^3.0.0",
+        "negotiator": "^1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/agent-base": {
+      "version": "7.1.4",
+      "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz",
+      "integrity": "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 14"
+      }
+    },
+    "node_modules/asn1.js": {
+      "version": "5.4.1",
+      "resolved": "https://registry.npmjs.org/asn1.js/-/asn1.js-5.4.1.tgz",
+      "integrity": "sha512-+I//4cYPccV8LdmBLiX8CYvf9Sp3vQsrqu2QNXRcrbiWvcx/UdlFiqUJJzxRQxgsZmvhXhn4cSKeSmoFjVdupA==",
+      "license": "MIT",
+      "dependencies": {
+        "bn.js": "^4.0.0",
+        "inherits": "^2.0.1",
+        "minimalistic-assert": "^1.0.0",
+        "safer-buffer": "^2.1.0"
+      }
+    },
+    "node_modules/bn.js": {
+      "version": "4.12.5",
+      "resolved": "https://registry.npmjs.org/bn.js/-/bn.js-4.12.5.tgz",
+      "integrity": "sha512-3aRg6/JxfffFD+OlOjOFR3Vo79l39ooBTFucxx+MT3dhCtzn3EmiUPQo+6/OZuI2jbXi3YKgmiTFBgChQMwIRQ==",
+      "license": "MIT"
+    },
+    "node_modules/body-parser": {
+      "version": "2.4.0",
+      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-2.4.0.tgz",
+      "integrity": "sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ==",
+      "license": "MIT",
+      "dependencies": {
+        "bytes": "^3.1.2",
+        "content-type": "^2.1.0",
+        "debug": "^4.4.3",
+        "http-errors": "^2.0.1",
+        "iconv-lite": "^0.7.3",
+        "on-finished": "^2.4.1",
+        "qs": "^6.16.1",
+        "raw-body": "^3.0.2",
+        "type-is": "^2.1.0"
+      },
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/buffer-equal-constant-time": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/buffer-equal-constant-time/-/buffer-equal-constant-time-1.0.1.tgz",
+      "integrity": "sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==",
+      "license": "BSD-3-Clause"
+    },
+    "node_modules/bun-types": {
+      "version": "1.4.4",
+      "resolved": "https://registry.npmjs.org/bun-types/-/bun-types-1.4.4.tgz",
+      "integrity": "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@types/node": "*",
+        "undici-types": "*"
+      }
+    },
+    "node_modules/bytes": {
+      "version": "3.1.2",
+      "resolved": "https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz",
+      "integrity": "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/call-bind-apply-helpers": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz",
+      "integrity": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "function-bind": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/call-bound": {
+      "version": "1.0.4",
+      "resolved": "https://registry.npmjs.org/call-bound/-/call-bound-1.0.4.tgz",
+      "integrity": "sha512-+ys997U96po4Kx/ABpBCqhA9EuxJaQWDQg7295H4hBphv3IZg0boBKuwYpt4YXp6MZ5AmZQnU/tyMTlRpaSejg==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.2",
+        "get-intrinsic": "^1.3.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/content-disposition": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/content-disposition/-/content-disposition-2.0.1.tgz",
+      "integrity": "sha512-e+H0ZXHSWYrENhQzw1LPuP4oF5MzVKmDU6d3hxlvaPEYLLg62MxtQNPRx4SYSuYJSBUgnQIG4HIN2tEtNv7Dog==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/content-type": {
+      "version": "2.1.0",
+      "resolved": "https://registry.npmjs.org/content-type/-/content-type-2.1.0.tgz",
+      "integrity": "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/cookie": {
+      "version": "0.7.2",
+      "resolved": "https://registry.npmjs.org/cookie/-/cookie-0.7.2.tgz",
+      "integrity": "sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/cookie-signature": {
+      "version": "1.2.2",
+      "resolved": "https://registry.npmjs.org/cookie-signature/-/cookie-signature-1.2.2.tgz",
+      "integrity": "sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=6.6.0"
+      }
+    },
+    "node_modules/cors": {
+      "version": "2.8.6",
+      "resolved": "https://registry.npmjs.org/cors/-/cors-2.8.6.tgz",
+      "integrity": "sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==",
+      "license": "MIT",
+      "dependencies": {
+        "object-assign": "^4",
+        "vary": "^1"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/debug": {
+      "version": "4.4.3",
+      "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+      "license": "MIT",
+      "dependencies": {
+        "ms": "^2.1.3"
+      },
+      "engines": {
+        "node": ">=6.0"
+      },
+      "peerDependenciesMeta": {
+        "supports-color": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/depd": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/depd/-/depd-2.0.0.tgz",
+      "integrity": "sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/dunder-proto": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz",
+      "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.1",
+        "es-errors": "^1.3.0",
+        "gopd": "^1.2.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/ecdsa-sig-formatter": {
+      "version": "1.0.11",
+      "resolved": "https://registry.npmjs.org/ecdsa-sig-formatter/-/ecdsa-sig-formatter-1.0.11.tgz",
+      "integrity": "sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "safe-buffer": "^5.0.1"
+      }
+    },
+    "node_modules/ee-first": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
+      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==",
+      "license": "MIT"
+    },
+    "node_modules/encodeurl": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/encodeurl/-/encodeurl-2.0.0.tgz",
+      "integrity": "sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/engine.io": {
+      "version": "6.6.11",
+      "resolved": "https://registry.npmjs.org/engine.io/-/engine.io-6.6.11.tgz",
+      "integrity": "sha512-z34mGpLoY/82ZbkX1LqGMIaf3wjVMPL6gVC681QDqnmzJ26synI8qAE32P+a7UazmpJZ8UGrFIeAavgRfXzYrg==",
+      "license": "MIT",
+      "dependencies": {
+        "@types/cors": "^2.8.12",
+        "@types/node": ">=10.0.0",
+        "@types/ws": "^8.5.12",
+        "accepts": "~1.3.4",
+        "cookie": "~0.7.2",
+        "cors": "~2.8.5",
+        "debug": "~4.4.1",
+        "engine.io-parser": "~5.2.1",
+        "ws": "~8.21.0"
+      },
+      "engines": {
+        "node": ">=10.2.0"
+      }
+    },
+    "node_modules/engine.io-parser": {
+      "version": "5.2.3",
+      "resolved": "https://registry.npmjs.org/engine.io-parser/-/engine.io-parser-5.2.3.tgz",
+      "integrity": "sha512-HqD3yTBfnBxIrbnM1DoD6Pcq8NECnh8d4As1Qgh0z5Gg3jRRIqijury0CL3ghu/edArpUYiYqQiDUQBIs4np3Q==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=10.0.0"
+      }
+    },
+    "node_modules/engine.io/node_modules/accepts": {
+      "version": "1.3.8",
+      "resolved": "https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz",
+      "integrity": "sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-types": "~2.1.34",
+        "negotiator": "0.6.3"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/engine.io/node_modules/mime-db": {
+      "version": "1.52.0",
+      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
+      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/engine.io/node_modules/mime-types": {
+      "version": "2.1.35",
+      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
+      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-db": "1.52.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/engine.io/node_modules/negotiator": {
+      "version": "0.6.3",
+      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-0.6.3.tgz",
+      "integrity": "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/es-define-property": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz",
+      "integrity": "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/es-errors": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz",
+      "integrity": "sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/es-object-atoms": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.2.tgz",
+      "integrity": "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/escape-html": {
+      "version": "1.0.3",
+      "resolved": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
+      "integrity": "sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==",
+      "license": "MIT"
+    },
+    "node_modules/etag": {
+      "version": "1.8.1",
+      "resolved": "https://registry.npmjs.org/etag/-/etag-1.8.1.tgz",
+      "integrity": "sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/express": {
+      "version": "5.3.0",
+      "resolved": "https://registry.npmjs.org/express/-/express-5.3.0.tgz",
+      "integrity": "sha512-qCqy1xSoaugxOD4IVHb1ZWdkvCF2W3aE2okKouWj8VwJ+ztskSiXoBnCSJqfKT+cVPJhuJqe9YLbY425+Zh00g==",
+      "license": "MIT",
+      "dependencies": {
+        "accepts": "^2.0.0",
+        "body-parser": "^2.3.0",
+        "content-disposition": "^2.0.1",
+        "content-type": "^2.0.0",
+        "cookie": "^0.7.1",
+        "cookie-signature": "^1.2.1",
+        "debug": "^4.4.0",
+        "depd": "^2.0.0",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "etag": "^1.8.1",
+        "finalhandler": "^2.1.0",
+        "fresh": "^2.0.0",
+        "http-errors": "^2.0.0",
+        "merge-descriptors": "^2.0.0",
+        "mime-types": "^3.0.0",
+        "on-finished": "^2.4.1",
+        "once": "^1.4.0",
+        "parseurl": "^1.3.3",
+        "proxy-addr": "^2.0.8",
+        "qs": "^6.16.0",
+        "range-parser": "^1.2.1",
+        "router": "^2.2.0",
+        "send": "^1.1.0",
+        "serve-static": "^2.2.0",
+        "statuses": "^2.0.1",
+        "type-is": "^2.1.0",
+        "vary": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/finalhandler": {
+      "version": "2.1.1",
+      "resolved": "https://registry.npmjs.org/finalhandler/-/finalhandler-2.1.1.tgz",
+      "integrity": "sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.0",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "on-finished": "^2.4.1",
+        "parseurl": "^1.3.3",
+        "statuses": "^2.0.1"
+      },
+      "engines": {
+        "node": ">= 18.0.0"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/forwarded": {
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz",
+      "integrity": "sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/fresh": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/fresh/-/fresh-2.0.0.tgz",
+      "integrity": "sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/function-bind": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz",
+      "integrity": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==",
+      "license": "MIT",
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/get-intrinsic": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz",
+      "integrity": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.2",
+        "es-define-property": "^1.0.1",
+        "es-errors": "^1.3.0",
+        "es-object-atoms": "^1.1.1",
+        "function-bind": "^1.1.2",
+        "get-proto": "^1.0.1",
+        "gopd": "^1.2.0",
+        "has-symbols": "^1.1.0",
+        "hasown": "^2.0.2",
+        "math-intrinsics": "^1.1.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/get-proto": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz",
+      "integrity": "sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==",
+      "license": "MIT",
+      "dependencies": {
+        "dunder-proto": "^1.0.1",
+        "es-object-atoms": "^1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/gopd": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz",
+      "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/has-symbols": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz",
+      "integrity": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/hasown": {
+      "version": "2.0.4",
+      "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz",
+      "integrity": "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==",
+      "license": "MIT",
+      "dependencies": {
+        "function-bind": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/http_ece": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/http_ece/-/http_ece-1.2.0.tgz",
+      "integrity": "sha512-JrF8SSLVmcvc5NducxgyOrKXe3EsyHMgBFgSaIUGmArKe+rwr0uphRkRXvwiom3I+fpIfoItveHrfudL8/rxuA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=16"
+      }
+    },
+    "node_modules/http-errors": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/http-errors/-/http-errors-2.0.1.tgz",
+      "integrity": "sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==",
+      "license": "MIT",
+      "dependencies": {
+        "depd": "~2.0.0",
+        "inherits": "~2.0.4",
+        "setprototypeof": "~1.2.0",
+        "statuses": "~2.0.2",
+        "toidentifier": "~1.0.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/https-proxy-agent": {
+      "version": "7.0.6",
+      "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-7.0.6.tgz",
+      "integrity": "sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==",
+      "license": "MIT",
+      "dependencies": {
+        "agent-base": "^7.1.2",
+        "debug": "4"
+      },
+      "engines": {
+        "node": ">= 14"
+      }
+    },
+    "node_modules/iconv-lite": {
+      "version": "0.7.3",
+      "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.7.3.tgz",
+      "integrity": "sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==",
+      "license": "MIT",
+      "dependencies": {
+        "safer-buffer": ">= 2.1.2 < 3.0.0"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/inherits": {
+      "version": "2.0.4",
+      "resolved": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz",
+      "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==",
+      "license": "ISC"
+    },
+    "node_modules/ipaddr.js": {
+      "version": "1.9.1",
+      "resolved": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz",
+      "integrity": "sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/is-promise": {
+      "version": "4.0.0",
+      "resolved": "https://registry.npmjs.org/is-promise/-/is-promise-4.0.0.tgz",
+      "integrity": "sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ==",
+      "license": "MIT"
+    },
+    "node_modules/jwa": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/jwa/-/jwa-2.0.1.tgz",
+      "integrity": "sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==",
+      "license": "MIT",
+      "dependencies": {
+        "buffer-equal-constant-time": "^1.0.1",
+        "ecdsa-sig-formatter": "1.0.11",
+        "safe-buffer": "^5.0.1"
+      }
+    },
+    "node_modules/jws": {
+      "version": "4.0.1",
+      "resolved": "https://registry.npmjs.org/jws/-/jws-4.0.1.tgz",
+      "integrity": "sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==",
+      "license": "MIT",
+      "dependencies": {
+        "jwa": "^2.0.1",
+        "safe-buffer": "^5.0.1"
+      }
+    },
+    "node_modules/math-intrinsics": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz",
+      "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/media-typer": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/media-typer/-/media-typer-1.1.1.tgz",
+      "integrity": "sha512-yz3xRaG20c6/BOzvYoDaGtPmGscs7YivItZEEqe6GbwNfHuxu9YNmvnEkMzKldAGY4/80pRcQRZSEnhquk9XuQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/merge-descriptors": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/merge-descriptors/-/merge-descriptors-2.0.0.tgz",
+      "integrity": "sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/sindresorhus"
+      }
+    },
+    "node_modules/mime-db": {
+      "version": "1.54.0",
+      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.54.0.tgz",
+      "integrity": "sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/mime-types": {
+      "version": "3.0.2",
+      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-3.0.2.tgz",
+      "integrity": "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-db": "^1.54.0"
+      },
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/minimalistic-assert": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/minimalistic-assert/-/minimalistic-assert-1.0.1.tgz",
+      "integrity": "sha512-UtJcAD4yEaGtjPezWuO9wC4nwUnVH/8/Im3yEHQP4b67cXlD/Qr9hdITCU1xDbSEXg2XKNaP8jsReV7vQd00/A==",
+      "license": "ISC"
+    },
+    "node_modules/minimist": {
+      "version": "1.2.8",
+      "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.8.tgz",
+      "integrity": "sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==",
+      "license": "MIT",
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/ms": {
+      "version": "2.1.3",
+      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+      "license": "MIT"
+    },
+    "node_modules/negotiator": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-1.1.0.tgz",
+      "integrity": "sha512-NMPBRMJgiQHjbd8phG3Vebdx4kZ1H121rbl5IkMqeOsahptB9BKo/d7oJ3zTXqTgagn2bWlNSXkh0QUGM31RYg==",
+      "license": "MIT",
+      "dependencies": {
+        "content-type": "^2.1.0"
+      },
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/object-assign": {
+      "version": "4.1.1",
+      "resolved": "https://registry.npmjs.org/object-assign/-/object-assign-4.1.1.tgz",
+      "integrity": "sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=0.10.0"
+      }
+    },
+    "node_modules/object-inspect": {
+      "version": "1.13.4",
+      "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz",
+      "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/on-finished": {
+      "version": "2.4.2",
+      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.4.2.tgz",
+      "integrity": "sha512-ATWUv387i+nLD49EiDoOft5scf32Vsdz3ktrQJG9bi7jRFmaXTssvyvj1EmeKVVgvesbqUtvQQvaS2TpTukAZQ==",
+      "license": "MIT",
+      "dependencies": {
+        "ee-first": "1.1.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/once": {
+      "version": "1.4.0",
+      "resolved": "https://registry.npmjs.org/once/-/once-1.4.0.tgz",
+      "integrity": "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==",
+      "license": "ISC",
+      "dependencies": {
+        "wrappy": "1"
+      }
+    },
+    "node_modules/parseurl": {
+      "version": "1.3.3",
+      "resolved": "https://registry.npmjs.org/parseurl/-/parseurl-1.3.3.tgz",
+      "integrity": "sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/path-to-regexp": {
+      "version": "8.4.2",
+      "resolved": "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.4.2.tgz",
+      "integrity": "sha512-qRcuIdP69NPm4qbACK+aDogI5CBDMi1jKe0ry5rSQJz8JVLsC7jV8XpiJjGRLLol3N+R5ihGYcrPLTno6pAdBA==",
+      "license": "MIT",
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/proxy-addr": {
+      "version": "2.0.8",
+      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.8.tgz",
+      "integrity": "sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==",
+      "license": "MIT",
+      "dependencies": {
+        "forwarded": "0.2.0",
+        "ipaddr.js": "1.9.1"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/qs": {
+      "version": "6.16.1",
+      "resolved": "https://registry.npmjs.org/qs/-/qs-6.16.1.tgz",
+      "integrity": "sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==",
+      "license": "BSD-3-Clause",
+      "dependencies": {
+        "es-define-property": "^1.0.1",
+        "side-channel": "^1.1.1"
+      },
+      "engines": {
+        "node": ">=0.6"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/range-parser": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/range-parser/-/range-parser-1.3.0.tgz",
+      "integrity": "sha512-hek2mFQpPuI4E1BBKrSto+BU3e3x4xuarsbiwr3+lf7p44juvFMV0XFWQAP3xUyqXA4RrXLIoaSUGbSt056ZMw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/raw-body": {
+      "version": "3.0.2",
+      "resolved": "https://registry.npmjs.org/raw-body/-/raw-body-3.0.2.tgz",
+      "integrity": "sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==",
+      "license": "MIT",
+      "dependencies": {
+        "bytes": "~3.1.2",
+        "http-errors": "~2.0.1",
+        "iconv-lite": "~0.7.0",
+        "unpipe": "~1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/router": {
+      "version": "2.2.0",
+      "resolved": "https://registry.npmjs.org/router/-/router-2.2.0.tgz",
+      "integrity": "sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.0",
+        "depd": "^2.0.0",
+        "is-promise": "^4.0.0",
+        "parseurl": "^1.3.3",
+        "path-to-regexp": "^8.0.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      }
+    },
+    "node_modules/safe-buffer": {
+      "version": "5.2.1",
+      "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
+      "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
+      "funding": [
+        {
+          "type": "github",
+          "url": "https://github.com/sponsors/feross"
+        },
+        {
+          "type": "patreon",
+          "url": "https://www.patreon.com/feross"
+        },
+        {
+          "type": "consulting",
+          "url": "https://feross.org/support"
+        }
+      ],
+      "license": "MIT"
+    },
+    "node_modules/safer-buffer": {
+      "version": "2.1.2",
+      "resolved": "https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz",
+      "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
+      "license": "MIT"
+    },
+    "node_modules/send": {
+      "version": "1.2.1",
+      "resolved": "https://registry.npmjs.org/send/-/send-1.2.1.tgz",
+      "integrity": "sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.3",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "etag": "^1.8.1",
+        "fresh": "^2.0.0",
+        "http-errors": "^2.0.1",
+        "mime-types": "^3.0.2",
+        "ms": "^2.1.3",
+        "on-finished": "^2.4.1",
+        "range-parser": "^1.2.1",
+        "statuses": "^2.0.2"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/serve-static": {
+      "version": "2.2.1",
+      "resolved": "https://registry.npmjs.org/serve-static/-/serve-static-2.2.1.tgz",
+      "integrity": "sha512-xRXBn0pPqQTVQiC8wyQrKs2MOlX24zQ0POGaj0kultvoOCstBQM5yvOhAVSUwOMjQtTvsPWoNCHfPGwaaQJhTw==",
+      "license": "MIT",
+      "dependencies": {
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "parseurl": "^1.3.3",
+        "send": "^1.2.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/setprototypeof": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz",
+      "integrity": "sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==",
+      "license": "ISC"
+    },
+    "node_modules/side-channel": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/side-channel/-/side-channel-1.1.1.tgz",
+      "integrity": "sha512-6x6dK6zJdpTzF4sQeNYxwtvBzf6Eg4GtlesS94HOvTudUeyK2WXAaIfmDgsyslYrRBeFIlsi54AYsFGUuhmvrQ==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "object-inspect": "^1.13.4",
+        "side-channel-list": "^1.0.1",
+        "side-channel-map": "^1.0.1",
+        "side-channel-weakmap": "^1.0.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-list": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.1.tgz",
+      "integrity": "sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "object-inspect": "^1.13.4"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-map": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/side-channel-map/-/side-channel-map-1.0.1.tgz",
+      "integrity": "sha512-VCjCNfgMsby3tTdo02nbjtM/ewra6jPHmpThenkTYh8pG9ucZ/1P8So4u4FGBek/BjpOVsDCMoLA/iuBKIFXRA==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bound": "^1.0.2",
+        "es-errors": "^1.3.0",
+        "get-intrinsic": "^1.2.5",
+        "object-inspect": "^1.13.3"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-weakmap": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/side-channel-weakmap/-/side-channel-weakmap-1.0.2.tgz",
+      "integrity": "sha512-WPS/HvHQTYnHisLo9McqBHOJk2FkHO/tlpvldyrnem4aeQp4hai3gythswg6p01oSoTl58rcpiFAjF2br2Ak2A==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bound": "^1.0.2",
+        "es-errors": "^1.3.0",
+        "get-intrinsic": "^1.2.5",
+        "object-inspect": "^1.13.3",
+        "side-channel-map": "^1.0.1"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/socket.io": {
+      "version": "4.8.4",
+      "resolved": "https://registry.npmjs.org/socket.io/-/socket.io-4.8.4.tgz",
+      "integrity": "sha512-9ZV9zg8vN8hO3Y25DhR7nUkJ1VDnBhq5O/JrXhFT9s6+F0gqytSASTHVfCFc2mJXaTfARroErplXlzFWwETZqQ==",
+      "license": "MIT",
+      "dependencies": {
+        "accepts": "~1.3.4",
+        "cors": "~2.8.5",
+        "debug": "~4.4.1",
+        "engine.io": "~6.6.0",
+        "socket.io-adapter": "~2.5.2",
+        "socket.io-parser": "~4.2.4"
+      },
+      "engines": {
+        "node": ">=10.2.0"
+      }
+    },
+    "node_modules/socket.io-adapter": {
+      "version": "2.5.8",
+      "resolved": "https://registry.npmjs.org/socket.io-adapter/-/socket.io-adapter-2.5.8.tgz",
+      "integrity": "sha512-6Oy52pbg+kvdCVvjcN+FnY7BvxZ7cIHNScbvztT/It5d0vbwoJoVZmF2gjJmnV0/4WlXRfG15zc45ySk9Ah8bw==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "~4.4.1",
+        "ws": "~8.21.0"
+      }
+    },
+    "node_modules/socket.io-parser": {
+      "version": "4.2.7",
+      "resolved": "https://registry.npmjs.org/socket.io-parser/-/socket.io-parser-4.2.7.tgz",
+      "integrity": "sha512-IH/iSeO9T6gz1KkFleGDWkG9N3dl4jXVYUtMhIqH10Md0ttMer8nUNWiP1DKuNrybD2xBrixLJdCC9J6ECoYkg==",
+      "license": "MIT",
+      "dependencies": {
+        "@socket.io/component-emitter": "~3.1.0",
+        "debug": "~4.4.1"
+      },
+      "engines": {
+        "node": ">=10.0.0"
+      }
+    },
+    "node_modules/socket.io/node_modules/accepts": {
+      "version": "1.3.8",
+      "resolved": "https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz",
+      "integrity": "sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-types": "~2.1.34",
+        "negotiator": "0.6.3"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/socket.io/node_modules/mime-db": {
+      "version": "1.52.0",
+      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
+      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/socket.io/node_modules/mime-types": {
+      "version": "2.1.35",
+      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
+      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-db": "1.52.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/socket.io/node_modules/negotiator": {
+      "version": "0.6.3",
+      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-0.6.3.tgz",
+      "integrity": "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/statuses": {
+      "version": "2.0.2",
+      "resolved": "https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz",
+      "integrity": "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/toidentifier": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz",
+      "integrity": "sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=0.6"
+      }
+    },
+    "node_modules/type-is": {
+      "version": "2.1.0",
+      "resolved": "https://registry.npmjs.org/type-is/-/type-is-2.1.0.tgz",
+      "integrity": "sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==",
+      "license": "MIT",
+      "dependencies": {
+        "content-type": "^2.0.0",
+        "media-typer": "^1.1.0",
+        "mime-types": "^3.0.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/typescript": {
+      "version": "5.9.3",
+      "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz",
+      "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+      "license": "Apache-2.0",
+      "peer": true,
+      "bin": {
+        "tsc": "bin/tsc",
+        "tsserver": "bin/tsserver"
+      },
+      "engines": {
+        "node": ">=14.17"
+      }
+    },
+    "node_modules/undici-types": {
+      "version": "8.12.3",
+      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-8.12.3.tgz",
+      "integrity": "sha512-EXE4ydL3S76dFb27UFjNVZHTyv/TLdATj/KUe29ptdcg6qXL48J2tZ3126E5kICj5jn781OR+XlVH1N6Mz8jbA==",
+      "dev": true,
+      "license": "MIT"
+    },
+    "node_modules/unpipe": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz",
+      "integrity": "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/vary": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/vary/-/vary-1.1.2.tgz",
+      "integrity": "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/web-push": {
+      "version": "3.6.7",
+      "resolved": "https://registry.npmjs.org/web-push/-/web-push-3.6.7.tgz",
+      "integrity": "sha512-OpiIUe8cuGjrj3mMBFWY+e4MMIkW3SVT+7vEIjvD9kejGUypv8GPDf84JdPWskK8zMRIJ6xYGm+Kxr8YkPyA0A==",
+      "license": "MPL-2.0",
+      "dependencies": {
+        "asn1.js": "^5.3.0",
+        "http_ece": "1.2.0",
+        "https-proxy-agent": "^7.0.0",
+        "jws": "^4.0.0",
+        "minimist": "^1.2.5"
+      },
+      "bin": {
+        "web-push": "src/cli.js"
+      },
+      "engines": {
+        "node": ">= 16"
+      }
+    },
+    "node_modules/wrappy": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
+      "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==",
+      "license": "ISC"
+    },
+    "node_modules/ws": {
+      "version": "8.21.3",
+      "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz",
+      "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=10.0.0"
+      },
+      "peerDependencies": {
+        "bufferutil": "^4.0.1",
+        "utf-8-validate": ">=5.0.2"
+      },
+      "peerDependenciesMeta": {
+        "bufferutil": {
+          "optional": true
+        },
+        "utf-8-validate": {
+          "optional": true
+        }
+      }
+    }
+  }
+}
+
+
+
+================================================================
+FILE: mini-services\realtime\server.js
+================================================================
+
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const { Server } = require("socket.io");
+
+const app = express();
+const server = http.createServer(app);
+
+const frontendUrl = process.env.FRONTEND_URL;
+
+app.use(
+  cors({
+    origin: frontendUrl,
+    methods: ["GET", "POST"]
+  })
+);
+
+app.get("/", (req, res) => {
+  res.json({
+    service: "Ghostline Realtime",
+    status: "online"
+  });
+});
+
+const io = new Server(server, {
+  cors: {
+    origin: frontendUrl,
+    methods: ["GET", "POST"]
+  }
+});
+
+io.on("connection", (socket) => {
+  console.log("Client connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Realtime server running on port ${PORT}`);
+});
+
+
+
+================================================================
+FILE: mini-services\realtime\service.ts
+================================================================
+/**
+ * Ghostline Realtime Service (socket.io)
+ * --------------------------------------
+ * Port 3003 (gateway: /?XTransformPort=3003) + loopback-only internal notify
+ * endpoint on 127.0.0.1:3004 used by the Next.js API routes.
+ *
+ * Responsibilities:
+ *  - Authenticated presence (handshake via one-time socketToken, heartbeats,
+ *    server-side expiry â€” no client-side booleans)
+ *  - Realtime message relay with full server-side validation (participant,
+ *    block-list, conversation expiry)
+ *  - Typing indicators, read receipts
+ *  - Scheduled sweeps: stale presence, expired conversations (messages + media),
+ *    expired Buzz posts, stories, and orphaned files
+ */
+
+import { createServer, type IncomingMessage, type ServerResponse } from 'http'
+import { Server } from 'socket.io'
+import webpush from 'web-push'
+import { db } from '../../src/lib/db'
+import { unlinkByStoragePath } from '../../src/lib/uploads'
+import { getPostRetentionCutoff } from '../../src/lib/post-retention'
+
+// NOTE: the public port is resolved LAZILY inside startRealtimeService() â€”
+// NOT at module level. ESM import hoisting evaluates this module before the
+// standalone entry's body maps PaaS PORT â†’ RT_PORT, and Next.js sets
+// process.env.PORT for its own HTTP server, so an eager read would either
+// miss the mapping or collide with the app port.
+const INTERNAL_PORT = 3004
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? 'ghostline-internal-dev'
+/**
+ * Survive transient failures (e.g. SQLite contention under concurrent API
+ * writes): Bun exits the process on unhandled rejections by default, which
+ * would take the whole app down. Log loudly instead of dying.
+ */
+process.on('unhandledRejection', (reason) => {
+  console.error('[rt] unhandledRejection (suppressed):', reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[rt] uncaughtException (suppressed):', err)
+})
+
+/** Wraps async socket handlers so no rejection escapes. */
+function guard<Args extends unknown[]>(fn: (...args: Args) => Promise<void> | void) {
+  return (...args: Args) => {
+    Promise.resolve(fn(...args)).catch((err) => {
+      console.error('[rt] handler error (suppressed):', err)
+    })
+  }
+}
+
+async function portBusy(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/rt/socket.io/?EIO=4&transport=polling`, {
+      signal: AbortSignal.timeout(1200),
+    })
+    const text = await res.text()
+    return text.startsWith('0')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Starts the realtime service. Safe to call from two places:
+ *  - standalone entry (mini-services/realtime/index.ts via run.sh), or
+ *  - in-process from src/instrumentation.ts (survives sandbox process reaping).
+ * Whichever binds :3003 first wins; the other becomes a no-op.
+ */
+export async function startRealtimeService(): Promise<void> {
+  // Lazy port resolution â€” see the note above INTERNAL_PORT.
+  const PORT = Number(process.env.RT_PORT ?? 3003)
+  if (await portBusy(PORT)) {
+    console.log('[rt] :3003 already served â€” skipping duplicate start')
+    return
+  }
+
+const httpServer = createServer()
+// Cross-service entry points on the public port:
+//   GET  /healthz â†’ platform health check
+//   POST /notify  â†’ token-guarded notify from the Next.js API routes
+// handleInternal is hoisted. Must be registered BEFORE socket.io attaches so
+// engine.io caches this listener â€” see path note below.
+httpServer.on('request', (req, res) => {
+  const url = req.url ?? ''
+  if (url === '/healthz' || url.startsWith('/healthz?')) {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ ok: true }))
+    return
+  }
+  if (url.startsWith('/notify')) handleInternal(req, res)
+})
+const io = new Server(httpServer, {
+  // Realtime HTTP+WS namespace. Path lives under /rt/socket.io so the same
+  // public port can also serve /healthz and /notify (path '/' would let
+  // engine.io swallow every request). The Caddy gateway forwards the full
+  // path + query, so the sandbox flow is unchanged.
+  path: '/rt/socket.io',
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+})
+
+// â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const ONLINE_GRACE_MS = 75_000 // heartbeat considered fresh for this long
+const LOCATION_TTL_MS = 0 // unused here (API owns location freshness)
+void LOCATION_TTL_MS
+
+const socketsByUser = new Map<string, Set<string>>()
+
+function userRoom(userId: string) {
+  return `user:${userId}`
+}
+
+// â”€â”€â”€ Web Push (offline notifications) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const pushEnabled = (() => {
+  const publicKey = process.env.VAPID_PUBLIC_KEY
+  const privateKey = process.env.VAPID_PRIVATE_KEY
+  if (!publicKey || !privateKey) {
+    console.warn('[push] VAPID keys missing â€” offline push notifications disabled')
+    return false
+  }
+  try {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT ?? 'mailto:hello@ghostline.app',
+      publicKey,
+      privateKey
+    )
+    return true
+  } catch (err) {
+    console.error('[push] invalid VAPID config:', err)
+    return false
+  }
+})()
+
+type PushPayload = { title: string; body: string; tag?: string; url?: string }
+
+/** Sends a push to all registered devices; cleans up stale (404/410) endpoints. */
+async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+  if (!pushEnabled) return
+  try {
+    const subs = await db.pushSubscription.findMany({ where: { userId } })
+    if (subs.length === 0) return
+    const staleIds: string[] = []
+    await Promise.allSettled(
+      subs.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            JSON.stringify(payload),
+            { TTL: 3600 }
+          )
+        } catch (err) {
+          const status = (err as { statusCode?: number }).statusCode
+          if (status === 404 || status === 410) staleIds.push(sub.id)
+          else console.warn(`[push] delivery failed (${status ?? 'network'}) for user ${userId}`)
+        }
+      })
+    )
+    if (staleIds.length > 0) {
+      await db.pushSubscription.deleteMany({ where: { id: { in: staleIds }, userId } }).catch(() => undefined)
+    }
+  } catch (err) {
+    console.error('[push] sendPushToUser failed:', err)
+  }
+}
+
+/** True when the user currently has at least one live socket (app in foreground). */
+function hasLiveSockets(userId: string): boolean {
+  return Boolean(socketsByUser.get(userId)?.size)
+}
+
+function previewFor(type: string, text: string | null): string {
+  if (type === 'image') return 'ðŸ“· Sent a photo'
+  if (type === 'video') return 'ðŸ“¹ Sent a video'
+  const t = (text ?? '').trim()
+  return t.length > 120 ? `${t.slice(0, 119)}â€¦` : t || 'Sent a message'
+}
+
+/** Push a new message to participants who are not currently connected. */
+async function pushMessageToOffline(
+  conversationId: string,
+  senderId: string,
+  offlineUserIds: string[],
+  type: string,
+  text: string | null
+) {
+  const targets = offlineUserIds.filter((uid) => uid !== senderId && !hasLiveSockets(uid))
+  if (targets.length === 0) return
+  const [sender, conv] = await Promise.all([
+    db.profile
+      .findUnique({ where: { id: senderId }, select: { displayName: true } })
+      .catch(() => null),
+    db.conversation
+      .findUnique({ where: { id: conversationId }, select: { type: true, name: true } })
+      .catch(() => null),
+  ])
+  const name = sender?.displayName ?? 'Someone'
+  const isGroup = conv?.type === 'group'
+  const title = isGroup ? `${conv?.name ?? 'Group'} Â· ${name}` : `${name} Â· Ghostline`
+  await Promise.all(
+    targets.map((uid) =>
+      sendPushToUser(uid, {
+        title,
+        body: previewFor(type, text),
+        tag: `conv-${conversationId}`,
+        url: `/?chat=${conversationId}`,
+      })
+    )
+  )
+}
+
+/** Push a "new chat" nudge to the recipient when they are offline. */
+async function pushConversationNewToOffline(
+  conversationId: string,
+  userIds: string[],
+  actorPublicId: string | null
+) {
+  let actorId: string | null = null
+  if (actorPublicId) {
+    const actor = await db.profile
+      .findUnique({ where: { publicId: actorPublicId }, select: { id: true, displayName: true } })
+      .catch(() => null)
+    if (!actor) return
+    actorId = actor.id
+    const targets = userIds.filter((uid) => uid !== actorId && !hasLiveSockets(uid))
+    await Promise.all(
+      targets.map((uid) =>
+        sendPushToUser(uid, {
+          title: 'Ghostline',
+          body: `${actor.displayName} started a chat with you.`,
+          tag: `conv-${conversationId}`,
+          url: `/?chat=${conversationId}`,
+        })
+      )
+    )
+  }
+}
+
+/**
+ * Presence broadcast that respects blocks: a user who blocked someone (or is
+ * blocked by them) never receives their presence events â€” blocks stop
+ * discovery, not just messaging.
+ */
+async function emitPresence(userId: string, publicId: string, online: boolean, lastSeenAt: string) {
+  const payload = { publicId, online, lastSeenAt }
+
+  // The caller already knows the internal user ID, so do not query Profile by
+  // publicId for every connect/disconnect/sweep event.
+  let blocks: { blockerId: string; blockedId: string }[]
+  try {
+    blocks = await db.blockedUser.findMany({
+      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+      select: { blockerId: true, blockedId: true },
+    })
+  } catch (err) {
+    // Fail closed: never broadcast presence if block privacy cannot be checked.
+    console.error('[rt] presence broadcast skipped; block lookup failed:', err)
+    return
+  }
+
+  const blockedIds = new Set<string>()
+  for (const block of blocks) {
+    blockedIds.add(block.blockerId === userId ? block.blockedId : block.blockerId)
+  }
+
+  // Broadcast to user rooms rather than emitting separately to every socket.
+  // Socket.IO treats an array of rooms as a union, so users with multiple tabs
+  // receive one event per socket while we avoid the nested per-socket emit loop.
+  const recipientRooms: string[] = []
+  for (const recipientId of socketsByUser.keys()) {
+    if (recipientId === userId || blockedIds.has(recipientId)) continue
+    recipientRooms.push(userRoom(recipientId))
+  }
+  if (recipientRooms.length > 0) {
+    io.to(recipientRooms).emit('presence:update', payload)
+  }
+}
+
+async function setOnline(userId: string, online: boolean) {
+  const now = new Date()
+  // Upsert â€” a session can outlive its Presence row (sweeps / manual cleanup);
+  // update-only would P2025 and the user would never show as online.
+  const previous = online
+    ? await db.presence.findUnique({ where: { userId }, select: { isOnline: true } })
+    : null
+  const presence = await db.presence.upsert({
+    where: { userId },
+    create: online
+      ? { userId, isOnline: true, lastHeartbeatAt: now, lastSeenAt: now }
+      : { userId, isOnline: false, lastSeenAt: now },
+    update: online
+      ? { isOnline: true, lastHeartbeatAt: now, lastSeenAt: now }
+      : { isOnline: false, lastSeenAt: now },
+    include: { user: { select: { publicId: true, displayName: true, showInPeople: true } } },
+  }).catch(() => null)
+  if (presence) {
+    await emitPresence(userId, presence.user.publicId, online, presence.lastSeenAt.toISOString())
+    if (online && !previous?.isOnline && presence.user.showInPeople) {
+      void notifyPeopleOnline(userId, presence.user.publicId, presence.user.displayName).catch((err) => {
+        console.error('[push] online notification failed:', err)
+      })
+    }
+  }
+}
+
+/** Notify opted-in users when someone appears in the People directory. */
+async function notifyPeopleOnline(userId: string, publicId: string, displayName: string) {
+  const recipients = await db.profile.findMany({
+    where: {
+      id: { not: userId },
+      notifyWhenPeopleOnline: true,
+      pushSubscriptions: { some: {} },
+      OR: [
+        { onlineNotificationAudience: 'anyone' },
+        {
+          onlineNotificationAudience: 'friends',
+          contactsOwned: { some: { contactId: userId } },
+        },
+      ],
+      blocksReceived: { none: { blockerId: userId } },
+      blocksMade: { none: { blockedId: userId } },
+    },
+    select: { id: true },
+  })
+  await Promise.all(
+    recipients.map((recipient) =>
+      sendPushToUser(recipient.id, {
+        title: 'Someone is online',
+        body: `${displayName} is now online.`,
+        tag: `online-${publicId}`,
+        url: '/',
+      })
+    )
+  )
+}
+
+/**
+ * Refresh presence for a still-connected user (connection refresh + heartbeat).
+ * If the account was deleted mid-session (FK violation), evict every socket of
+ * that user instead of erroring on every future heartbeat â€” the handshake
+ * middleware rejects any reconnect because the session row cascaded away.
+ */
+async function touchPresence(userId: string) {
+  try {
+    await db.presence.upsert({
+      where: { userId },
+      create: { userId, isOnline: true, lastHeartbeatAt: new Date() },
+      update: { isOnline: true, lastHeartbeatAt: new Date() },
+    })
+  } catch (e) {
+    const code = (e as { code?: string } | null)?.code
+    if (code === 'P2003' || code === 'P2025') {
+      socketsByUser.delete(userId)
+      io.in(userRoom(userId)).disconnectSockets(true)
+      return
+    }
+    throw e
+  }
+}
+
+// â”€â”€â”€ connection lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+io.use(async (socket, next) => {
+  try {
+    const token = String(socket.handshake.auth?.token ?? '')
+    if (!token) return next(new Error('auth required'))
+    const session = await db.session.findUnique({
+      where: { socketToken: token },
+      select: { userId: true, expiresAt: true },
+    })
+    if (!session || session.expiresAt.getTime() < Date.now()) {
+      return next(new Error('invalid session'))
+    }
+    socket.data.userId = session.userId
+    next()
+  } catch {
+    next(new Error('auth failed'))
+  }
+})
+
+io.on('connection', guard(async (socket) => {
+  const userId = socket.data.userId as string
+  const set = socketsByUser.get(userId) ?? new Set<string>()
+  const wasOffline = set.size === 0
+  set.add(socket.id)
+  socketsByUser.set(userId, set)
+
+  socket.join(userRoom(userId))
+  // Global feed room â€” every connected client hears Buzz updates
+  socket.join('feed')
+
+  if (wasOffline) await setOnline(userId, true)
+  else await touchPresence(userId)
+
+  // Join every active conversation room so messages/read receipts arrive live
+  try {
+    const participations = await db.conversationParticipant.findMany({
+      where: { userId, conversation: { status: 'active' } },
+      select: { conversationId: true },
+      take: 100,
+    })
+    for (const p of participations) socket.join(`conv:${p.conversationId}`)
+  } catch (e) {
+    console.error('[rt] failed to join conversation rooms', e)
+  }
+
+  socket.on('presence:heartbeat', guard(async () => {
+    await touchPresence(userId)
+  }))
+
+  socket.on('conversation:subscribe', guard(async (data: { conversationId?: string }, ack?: (r: unknown) => void) => {
+    const conversationId = String(data?.conversationId ?? '')
+    const participant = await db.conversationParticipant.findFirst({
+      where: { conversationId, userId },
+    })
+    if (participant) {
+      socket.join(`conv:${conversationId}`)
+      ack?.({ ok: true })
+    } else {
+      ack?.({ ok: false })
+    }
+  }))
+
+  // â”€â”€ realtime messaging (server-validated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  socket.on(
+    'message:send',
+    guard(
+    async (
+      data: { conversationId?: string; clientId?: string; type?: string; text?: string; fileId?: string; replyToId?: string },
+      ack?: (r: unknown) => void
+    ) => {
+      try {
+        const conversationId = String(data?.conversationId ?? '')
+        const clientId = typeof data?.clientId === 'string' ? data.clientId.slice(0, 64) : null
+        const text = typeof data?.text === 'string' ? data.text.slice(0, 2000).trim() : ''
+        const fileId = data?.fileId ? String(data.fileId) : null
+        const replyToId = typeof data?.replyToId === 'string' ? data.replyToId : null
+        const type = ['text', 'image', 'video'].includes(String(data?.type)) ? String(data.type) : 'text'
+
+        const participation = await db.conversationParticipant.findFirst({
+          where: { conversationId, userId },
+          include: { conversation: { include: { participants: true } } },
+        })
+        if (!participation) return ack?.({ ok: false, error: 'not_participant' })
+
+        const conv = participation.conversation
+        if (conv.status !== 'active' || (conv.expiresAt && conv.expiresAt.getTime() <= Date.now())) {
+          return ack?.({ ok: false, error: 'conversation_expired' })
+        }
+
+        // Blocks stop messaging in both directions â€” direct chats only.
+        // Groups are shared spaces; a member block mutes the DM, not the room.
+        const others = conv.participants.filter((p) => p.userId !== userId)
+        if (conv.type !== 'group' && others.length > 0) {
+          const blocks = await db.blockedUser.findMany({
+            where: {
+              OR: [
+                { blockerId: userId, blockedId: { in: others.map((o) => o.userId) } },
+                { blockerId: { in: others.map((o) => o.userId) }, blockedId: userId },
+              ],
+            },
+          })
+          if (blocks.length > 0) return ack?.({ ok: false, error: 'blocked' })
+        }
+
+        if (type === 'text' && !text) return ack?.({ ok: false, error: 'empty' })
+        const replyTo = replyToId
+          ? await db.message.findFirst({
+              where: {
+                id: replyToId,
+                conversationId,
+                deletedForEveryoneAt: null,
+                hiddenFor: { none: { userId } },
+              },
+              include: { sender: { select: { publicId: true, displayName: true } } },
+            })
+          : null
+        if (replyToId && !replyTo) return ack?.({ ok: false, error: 'invalid_reply' })
+        if (type !== 'text') {
+          if (!fileId) return ack?.({ ok: false, error: 'media_required' })
+          const file = await db.file.findUnique({ where: { id: fileId } })
+          if (!file || file.ownerId !== userId) return ack?.({ ok: false, error: 'invalid_media' })
+        }
+
+        const message = await db.message.create({
+          data: { conversationId, senderId: userId, type, text: text || null, fileId, clientId, replyToId },
+        })
+        await Promise.all([
+          db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }),
+          db.conversationParticipant
+            .update({ where: { id: participation.id }, data: { lastReadAt: new Date() } })
+            .catch(() => undefined),
+        ])
+
+        const sender = await db.profile.findUnique({ where: { id: userId }, select: { publicId: true, displayName: true } })
+        const payload = {
+          id: message.id,
+          conversationId,
+          senderPublicId: sender?.publicId ?? '',
+          senderName: conv.type === 'group' ? (sender?.displayName ?? null) : null,
+          type,
+          text: message.text,
+          mediaUrl: message.fileId ? `/api/files/${message.fileId}` : null,
+          createdAt: message.createdAt.toISOString(),
+          clientId: message.clientId,
+          editedAt: null,
+          deletedForEveryone: false,
+          replyTo: replyTo
+            ? {
+                id: replyTo.id,
+                senderPublicId: replyTo.sender.publicId,
+                senderName: replyTo.sender.displayName,
+                type: replyTo.type,
+                text: replyTo.text,
+                deletedForEveryone: false,
+              }
+            : null,
+        }
+        io.to(`conv:${conversationId}`).emit('message:new', payload)
+        // Offline participants (no live socket) get a Web Push notification.
+        void pushMessageToOffline(
+          conversationId,
+          userId,
+          others.map((o) => o.userId),
+          type,
+          message.text
+        )
+        ack?.({ ok: true, message: payload })
+      } catch (e) {
+        console.error('[rt] message:send failed', e)
+        ack?.({ ok: false, error: 'server_error' })
+      }
+    }
+    )
+  )
+
+  socket.on('typing', (data: { conversationId?: string; typing?: boolean }) => {
+    const conversationId = String(data?.conversationId ?? '')
+    if (!conversationId) return
+    socket.to(`conv:${conversationId}`).emit('typing', {
+      conversationId,
+      typing: Boolean(data?.typing),
+    })
+  })
+
+  socket.on('conversation:read', guard(async (data: { conversationId?: string }) => {
+    const conversationId = String(data?.conversationId ?? '')
+    const participation = await db.conversationParticipant.findFirst({
+      where: { conversationId, userId },
+    })
+    if (!participation) return
+    const now = new Date()
+    await db.conversationParticipant
+      .update({ where: { id: participation.id }, data: { lastReadAt: now } })
+      .catch(() => undefined)
+    io.to(`conv:${conversationId}`).emit('conversation:read', {
+      conversationId,
+      userId,
+      lastReadAt: now.toISOString(),
+    })
+  }))
+
+  socket.on('disconnect', guard(async () => {
+    const set = socketsByUser.get(userId)
+    set?.delete(socket.id)
+    if (set && set.size === 0) {
+      socketsByUser.delete(userId)
+      await setOnline(userId, false)
+    }
+  }))
+  })) // end io.on('connection')
+
+// â”€â”€â”€ internal notify endpoint (loopback only, token-guarded) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function handleInternal(req: IncomingMessage, res: ServerResponse) {
+  if (req.method !== 'POST' || !req.url?.startsWith('/notify')) {
+    res.writeHead(404).end()
+    return
+  }
+  if (req.headers['x-internal-token'] !== INTERNAL_TOKEN) {
+    res.writeHead(401).end(JSON.stringify({ error: 'bad token' }))
+    return
+  }
+  let body = ''
+  req.on('data', (c) => {
+    body += c
+    if (body.length > 1_000_000) req.destroy()
+  })
+  req.on('end', () => {
+    void (async () => {
+    try {
+      const { userIds, rooms, event, payload } = JSON.parse(body)
+      const hasUsers = Array.isArray(userIds) && userIds.length > 0
+      const hasRooms = Array.isArray(rooms) && rooms.length > 0
+      if ((!hasUsers && !hasRooms) || typeof event !== 'string') {
+        res.writeHead(400).end(JSON.stringify({ error: 'bad payload' }))
+        return
+      }
+      for (const uid of hasUsers ? userIds : []) io.to(userRoom(String(uid))).emit(event, payload)
+      for (const room of hasRooms ? rooms : []) io.to(String(room)).emit(event, payload)
+      // Offline push: new messages / new chats reach users with no live socket.
+      if (event === 'message:new' && payload && typeof payload === 'object') {
+        const p = payload as {
+          conversationId?: string
+          senderPublicId?: string
+          type?: string
+          text?: string | null
+        }
+        if (p.conversationId && p.senderPublicId) {
+          const sender = await db.profile
+            .findUnique({ where: { publicId: p.senderPublicId }, select: { id: true } })
+            .catch(() => null)
+          void pushMessageToOffline(
+            p.conversationId,
+            sender?.id ?? '',
+            userIds.map(String),
+            String(p.type ?? 'text'),
+            p.text ?? null
+          )
+        }
+      } else if (event === 'conversation:new' && payload && typeof payload === 'object') {
+        const p = payload as { conversationId?: string; byPublicId?: string }
+        if (p.conversationId) {
+          void pushConversationNewToOffline(p.conversationId, userIds.map(String), p.byPublicId ?? null)
+        }
+      } else if (event === 'buzz:notification' && payload && typeof payload === 'object') {
+        const p = payload as PushPayload
+        for (const userId of userIds.map(String)) {
+          // A live socket does not mean the app is foregrounded. The service
+          // worker suppresses the OS notification only for a visible, focused
+          // client, so always attempt push delivery for Buzz activity.
+          void sendPushToUser(userId, p)
+        }
+      }
+      res.writeHead(200).end(JSON.stringify({ ok: true }))
+    } catch {
+      res.writeHead(400).end(JSON.stringify({ error: 'bad json' }))
+    }
+    })().catch((err) => {
+      console.error('[rt] internal notify handler failed:', err)
+      try { res.writeHead(500).end() } catch { /* already sent */ }
+    })
+  })
+}
+
+// â”€â”€â”€ scheduled sweeps (server-side expiry â€” never trusts client timers) â”€â”€â”€â”€â”€
+
+async function deleteFileBytes(storagePath: string | null | undefined) {
+  await unlinkByStoragePath(storagePath)
+}
+
+async function sweepExpiredConversations() {
+  // Expired conversations are removed. Ended conversations stay readable for
+  // 24h after ending, then are swept too (they already reject new messages).
+  const endedCutoff = new Date(Date.now() - 24 * 3_600_000)
+  const expired = await db.conversation.findMany({
+    where: {
+      OR: [
+        { expiresAt: { lte: new Date() } },
+        { status: 'ended', updatedAt: { lte: endedCutoff } },
+      ],
+    },
+    include: { participants: true },
+    take: 100,
+  })
+  for (const conv of expired) {
+    const onlyEnded = conv.status === 'ended' && !(conv.expiresAt && conv.expiresAt.getTime() <= Date.now())
+    const userIds = conv.participants.map((p) => p.userId)
+    for (const uid of userIds) {
+      io.to(userRoom(uid)).emit('conversation:deleted', {
+        conversationIds: [conv.id],
+        reason: onlyEnded ? 'ended_cleanup' : 'expired',
+      })
+    }
+
+    const messages = await db.message.findMany({ where: { conversationId: conv.id }, select: { fileId: true } })
+    await db.conversation.delete({ where: { id: conv.id } }) // cascades messages + participants
+
+    const fileIds = messages.map((m) => m.fileId).filter((v): v is string => Boolean(v))
+    if (fileIds.length) {
+      const files = await db.file.findMany({ where: { id: { in: fileIds } } })
+      await db.file.deleteMany({ where: { id: { in: fileIds } } })
+      for (const f of files) await deleteFileBytes(f.storagePath)
+    }
+    if (expired.length > 0) console.log(`[sweep] removed conversation ${conv.id} (${onlyEnded ? 'ended' : 'expired'})`)
+  }
+}
+
+async function sweepStories() {
+  const expired = await db.story.findMany({
+    where: { OR: [{ expiresAt: { lte: new Date() } }, { status: 'deleted' }] },
+    take: 200,
+  })
+  for (const s of expired) {
+    await db.story.delete({ where: { id: s.id } }).catch(() => undefined)
+    if (s.fileId) {
+      const f = await db.file.findUnique({ where: { id: s.fileId } })
+      if (f) {
+        await db.file.delete({ where: { id: f.id } }).catch(() => undefined)
+        await deleteFileBytes(f.storagePath)
+      }
+    }
+  }
+  if (expired.length) console.log(`[sweep] removed ${expired.length} expired stories`)
+}
+
+async function sweepExpiredPosts() {
+  const expired = await db.post.deleteMany({
+    where: { createdAt: { lt: getPostRetentionCutoff() } },
+  })
+  if (expired.count > 0) {
+    io.to('feed').emit('feed:update', { reason: 'posts_expired' })
+    console.log(`[sweep] removed ${expired.count} expired Buzz posts`)
+  }
+}
+
+async function sweepPresence() {
+  const cutoff = new Date(Date.now() - ONLINE_GRACE_MS)
+  const stale = await db.presence.findMany({
+    where: { isOnline: true, lastHeartbeatAt: { lt: cutoff } },
+    include: { user: { select: { publicId: true } } },
+    take: 200,
+  })
+  for (const p of stale) {
+    // A live socket means a missed sweep, not an offline user
+    if (socketsByUser.get(p.userId)?.size) {
+      await db.presence
+        .update({ where: { userId: p.userId }, data: { lastHeartbeatAt: new Date() } })
+        .catch(() => undefined)
+      continue
+    }
+    await db.presence
+      .update({ where: { userId: p.userId }, data: { isOnline: false, lastSeenAt: new Date() } })
+      .catch(() => undefined)
+    await emitPresence(p.userId, p.user.publicId, false, new Date().toISOString())
+  }
+}
+
+async function sweepOrphanFiles() {
+  const cutoff = new Date(Date.now() - 24 * 3_600_000)
+  const files = await db.file.findMany({ where: { createdAt: { lt: cutoff } }, take: 300 })
+  for (const f of files) {
+    const [inMessage, inStory, asAvatar] = await Promise.all([
+      db.message.count({ where: { fileId: f.id } }),
+      db.story.count({ where: { fileId: f.id } }),
+      db.profile.count({ where: { avatarFileId: f.id } }),
+    ])
+    if (inMessage === 0 && inStory === 0 && asAvatar === 0) {
+      await db.file.delete({ where: { id: f.id } }).catch(() => undefined)
+      await deleteFileBytes(f.storagePath)
+    }
+  }
+}
+
+let sweeping = false
+async function runSweeps() {
+  if (sweeping) return
+  sweeping = true
+  try {
+    await sweepExpiredPosts()
+    await sweepExpiredConversations()
+    await sweepStories()
+    await sweepPresence()
+  } catch (e) {
+    console.error('[sweep] error', e)
+  } finally {
+    sweeping = false
+  }
+}
+
+setInterval(runSweeps, 60_000).unref?.()
+setInterval(sweepOrphanFiles, 60 * 60_000).unref?.()
+setInterval(() => {
+  // Keep SQLite connection warm; also serves as a liveness log line.
+  db.presence.count().catch(() => undefined)
+}, 10 * 60_000).unref?.()
+
+// â”€â”€â”€ boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const internalServer = createServer(handleInternal)
+internalServer.listen(INTERNAL_PORT, '127.0.0.1', () => {
+  console.log(`[rt] internal notify endpoint on 127.0.0.1:${INTERNAL_PORT}`)
+})
+
+httpServer.listen(PORT, async () => {
+  console.log(`Realtime service listening on :${PORT}`)
+  await runSweeps().catch(() => undefined) // catch up on missed cleanups (offline users, restarts)
+})
+}
+
+
+
+================================================================
+FILE: mini-services\realtime\tsconfig.json
+================================================================
+{
+  "compilerOptions": {
+    // Environment setup & latest features
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "types": ["bun"],
+
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noPropertyAccessFromIndexSignature": false
+  }
+}
+
+
+
+================================================================
+FILE: next.config.ts
+================================================================
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverExternalPackages: [
+    "socket.io",
+    "engine.io",
+    "@prisma/client",
+    "@prisma/adapter-pg",
+    "@google-cloud/cloud-sql-connector",
+    "pg",
+    "firebase-admin",
+  ],
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  reactStrictMode: false,
+};
+
+export default nextConfig;
+
+
+
+================================================================
+FILE: package.json
+================================================================
+{
+  "name": "nextjs_tailwind_shadcn_ts",
+  "version": "0.2.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000 2>&1 | tee dev.log",
+    "postinstall": "prisma generate",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "eslint .",
+    "migrate:media": "bun run scripts/migrate-media.ts",
+    "db:push": "prisma db push --accept-data-loss",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:reset": "prisma migrate reset"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@google-cloud/cloud-sql-connector": "^1.12.1",
+    "@hookform/resolvers": "^5.1.1",
+    "@mdxeditor/editor": "^3.39.1",
+    "@prisma/adapter-pg": "^6.19.3",
+    "@prisma/client": "^6.11.1",
+    "@radix-ui/react-accordion": "^1.2.11",
+    "@radix-ui/react-alert-dialog": "^1.1.14",
+    "@radix-ui/react-aspect-ratio": "^1.1.7",
+    "@radix-ui/react-avatar": "^1.1.10",
+    "@radix-ui/react-checkbox": "^1.3.2",
+    "@radix-ui/react-collapsible": "^1.1.11",
+    "@radix-ui/react-context-menu": "^2.2.15",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-dropdown-menu": "^2.1.15",
+    "@radix-ui/react-hover-card": "^1.1.14",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-menubar": "^1.1.15",
+    "@radix-ui/react-navigation-menu": "^1.2.13",
+    "@radix-ui/react-popover": "^1.1.14",
+    "@radix-ui/react-progress": "^1.1.7",
+    "@radix-ui/react-radio-group": "^1.3.7",
+    "@radix-ui/react-scroll-area": "^1.2.9",
+    "@radix-ui/react-select": "^2.2.5",
+    "@radix-ui/react-separator": "^1.1.7",
+    "@radix-ui/react-slider": "^1.3.5",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-switch": "^1.2.5",
+    "@radix-ui/react-tabs": "^1.1.12",
+    "@radix-ui/react-toast": "^1.2.14",
+    "@radix-ui/react-toggle": "^1.1.9",
+    "@radix-ui/react-toggle-group": "^1.1.10",
+    "@radix-ui/react-tooltip": "^1.2.7",
+    "@reactuses/core": "^6.0.5",
+    "@tanstack/react-query": "^5.82.0",
+    "@tanstack/react-table": "^8.21.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "date-fns": "^4.1.0",
+    "embla-carousel-react": "^8.6.0",
+    "firebase": "^13.1.0",
+    "firebase-admin": "^13.10.0",
+    "framer-motion": "^12.23.2",
+    "input-otp": "^1.4.2",
+    "lucide-react": "^0.525.0",
+    "next": "^16.1.1",
+    "next-auth": "^4.24.11",
+    "next-intl": "^4.3.4",
+    "next-themes": "^0.4.6",
+    "pg": "^8.23.1",
+    "prisma": "^6.11.1",
+    "react": "^19.0.0",
+    "react-day-picker": "^9.8.0",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.60.0",
+    "react-markdown": "^10.1.0",
+    "react-resizable-panels": "^3.0.3",
+    "react-syntax-highlighter": "^15.6.1",
+    "recharts": "^2.15.4",
+    "sharp": "^0.34.3",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
+    "sonner": "^2.0.6",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "uuid": "^11.1.0",
+    "vaul": "^1.1.2",
+    "web-push": "^3.6.7",
+    "z-ai-web-dev-sdk": "^0.0.18",
+    "zod": "^4.0.2",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "bun-types": "^1.3.4",
+    "eslint": "^9",
+    "eslint-config-next": "^16.1.1",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.3.5",
+    "typescript": "^5"
+  }
+}
+
+
+
+================================================================
+FILE: src\instrumentation.ts
+================================================================
+/**
+ * Next.js instrumentation hook â€” runs once per server boot.
+ *
+ * Boots the Ghostline realtime service (socket.io :3003 + internal notify
+ * :3004) in-process so it shares the Next.js process lifetime. If the
+ * standalone mini-service (mini-services/realtime) already owns the port,
+ * this becomes a no-op â€” see the port guard in service.ts.
+ *
+ * Set DISABLE_INPROCESS_REALTIME=1 on hosts where realtime runs as its own
+ * service (e.g. the Cloud Run production topology) so the web tier never boots a
+ * second, unreachable instance.
+ */
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return
+  if (process.env.DISABLE_INPROCESS_REALTIME === '1') return
+  try {
+    const { startRealtimeService } = await import('../mini-services/realtime/service')
+    await startRealtimeService()
+  } catch (err) {
+    console.error('[rt] in-process realtime boot failed:', err)
+  }
+}
+
+
+
+================================================================
+FILE: src\lib\expire.ts
+================================================================
+import { addHours, addMonths } from 'date-fns'
+
+export const EXPIRATION_POLICIES = ['24h', '3months', 'never'] as const
+export type ExpirationPolicy = (typeof EXPIRATION_POLICIES)[number]
+
+export const POLICY_LABELS: Record<ExpirationPolicy, string> = {
+  '24h': '24 hours',
+  '3months': '3 months',
+  never: 'Never',
+}
+
+export function isExpirationPolicy(v: unknown): v is ExpirationPolicy {
+  return typeof v === 'string' && (EXPIRATION_POLICIES as readonly string[]).includes(v)
+}
+
+/** Expiration is always computed from a server-side timestamp. */
+export function computeExpiresAt(policy: ExpirationPolicy, from: Date = new Date()): Date | null {
+  switch (policy) {
+    case '24h':
+      return addHours(from, 24)
+    case '3months':
+      return addMonths(from, 3)
+    case 'never':
+      return null
+  }
+}
+
+export function isConversationExpired(c: { expiresAt: Date | null; status: string }): boolean {
+  if (c.status !== 'active') return true
+  if (c.expiresAt && c.expiresAt.getTime() <= Date.now()) return true
+  return false
+}
+
+/** Warning threshold: 24h chats warn under 6h left, 3-month chats under 7 days. */
+export function isExpiringSoon(expiresAt: Date | null, policy: string): boolean {
+  if (!expiresAt) return false
+  const remaining = expiresAt.getTime() - Date.now()
+  if (policy === '24h') return remaining < 6 * 3_600_000
+  if (policy === '3months') return remaining < 7 * 24 * 3_600_000
+  return false
+}
+
+export const STORY_TTL_HOURS = 24
+
+
+
+================================================================
+FILE: src\lib\firebase-admin.ts
+================================================================
+
+import {
+  applicationDefault,
+  cert,
+  getApps,
+  initializeApp,
+  type App,
+} from 'firebase-admin/app'
+import { getAuth } from 'firebase-admin/auth'
+import {
+  FieldValue,
+  getFirestore,
+} from 'firebase-admin/firestore'
+
+let adminApp: App | undefined
+
+function getAdminApp(): App {
+  if (adminApp) return adminApp
+
+  const existingApp = getApps()[0]
+  if (existingApp) {
+    adminApp = existingApp
+    return adminApp
+  }
+
+  const projectId =
+    process.env.GOOGLE_CLOUD_PROJECT ??
+    process.env.FIREBASE_PROJECT_ID ??
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+
+  const serviceAccountValue =
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON ??
+    (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64
+      ? Buffer.from(
+          process.env.FIREBASE_SERVICE_ACCOUNT_BASE64,
+          'base64',
+        ).toString('utf8')
+      : undefined)
+
+  if (serviceAccountValue) {
+    let serviceAccount
+
+    try {
+      serviceAccount = JSON.parse(serviceAccountValue)
+    } catch {
+      throw new Error(
+        'Firebase service-account environment variable is not valid JSON.',
+      )
+    }
+
+    adminApp = initializeApp({
+      credential: cert(serviceAccount),
+      ...(projectId ? { projectId } : {}),
+    })
+  } else {
+    adminApp = initializeApp({
+      credential: applicationDefault(),
+      ...(projectId ? { projectId } : {}),
+    })
+  }
+
+  return adminApp
+}
+
+export function getFirebaseAdminFirestore() {
+  return getFirestore(getAdminApp())
+}
+
+export function createFirebaseCustomToken(
+  userId: string,
+): Promise<string> {
+  return getAuth(getAdminApp()).createCustomToken(userId)
+}
+
+export async function publishFirebaseUserEvent(
+  userIds: string[],
+  event: string,
+  payload: unknown,
+): Promise<void> {
+  const firestore = getFirebaseAdminFirestore()
+  const uniqueIds = [...new Set(userIds)]
+
+  for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+    const batch = firestore.batch()
+
+    for (const userId of uniqueIds.slice(offset, offset + 400)) {
+      const eventRef = firestore
+        .collection('realtimeUsers')
+        .doc(userId)
+        .collection('events')
+        .doc()
+
+      batch.create(eventRef, {
+        event,
+        payload,
+        createdAt: FieldValue.serverTimestamp(),
+        expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      })
+    }
+
+    await batch.commit()
+  }
+}
+
+export async function publishFirebaseBroadcastEvent(
+  room: string,
+  event: string,
+  payload: unknown,
+): Promise<void> {
+  if (room !== 'feed') {
+    throw new Error(`Unsupported public Firebase realtime room: ${room}`)
+  }
+
+  await getFirebaseAdminFirestore()
+    .collection('realtimeBroadcasts')
+    .add({
+      room,
+      event,
+      payload,
+      createdAt: FieldValue.serverTimestamp(),
+      expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    })
+}
+
+
+
+================================================================
+FILE: src\lib\geo.ts
+================================================================
+/**
+ * Geospatial helpers.
+ *
+ * The sandbox database is SQLite, which has no PostGIS. Nearby discovery uses a
+ * lat/lng bounding-box prefilter in SQL plus a precise haversine filter here â€”
+ * functionally equivalent for radii â‰¤ 5 km. The production path (PostgreSQL +
+ * PostGIS `ST_DWithin`) is documented in the README.
+ */
+
+export const EARTH_RADIUS_M = 6_371_000
+
+export function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(a)))
+}
+
+export type BoundingBox = {
+  minLat: number
+  maxLat: number
+  minLng: number
+  maxLng: number
+}
+
+export function boundingBox(lat: number, lng: number, radiusM: number): BoundingBox {
+  const latDelta = (radiusM / EARTH_RADIUS_M) * (180 / Math.PI)
+  const cos = Math.max(0.01, Math.cos((lat * Math.PI) / 180))
+  const lngDelta = latDelta / cos
+  return {
+    minLat: lat - latDelta,
+    maxLat: lat + latDelta,
+    minLng: lng - lngDelta,
+    maxLng: lng + lngDelta,
+  }
+}
+
+export const RADIUS_PRESETS = [5, 10, 25, 50, 100, 500, 1000, 5000] as const
+export const MAX_RADIUS_M = 5000
+
+/**
+ * Round distances into coarse buckets so exact positions cannot be inferred
+ * from the label: <100 m â†’ 10 m steps, <1 km â†’ 25 m steps, â‰¥1 km â†’ 100 m steps.
+ */
+export function approximateDistance(rawMeters: number): { meters: number; label: string } {
+  let step: number
+  if (rawMeters < 100) step = 10
+  else if (rawMeters < 1000) step = 25
+  else step = 100
+  const meters = Math.max(step, Math.round(rawMeters / step) * step)
+  const label = meters < 1000 ? `${meters} m` : `${(meters / 1000).toFixed(1)} km`
+  return { meters, label }
+}
+
+
+
+================================================================
+FILE: src\lib\ids.ts
+================================================================
+import { randomBytes, randomInt } from 'crypto'
+
+// Unambiguous alphabet (no I, L, O, U, 0, 1)
+const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+
+export function randomCode(length: number): string {
+  let out = ''
+  for (let i = 0; i < length; i++) out += ALPHABET[randomInt(ALPHABET.length)]
+  return out
+}
+
+/** Public-facing user id, e.g. "GX-7K2N9Q" */
+export function generatePublicId(): string {
+  return `GX-${randomCode(6)}`
+}
+
+/** Invite code, e.g. "XK7Q-2M9P" */
+export function generateInviteCode(): string {
+  return `${randomCode(4)}-${randomCode(4)}`
+}
+
+/**
+ * Group join code, e.g. "GXK7-2M9P" â€” always carries the leading "G" and
+ * normalizes to 9 characters (user invite codes normalize to 8), so code
+ * shape alone routes lookup/join to the right table.
+ */
+export function generateGroupJoinCode(): string {
+  return `G${randomCode(4)}-${randomCode(4)}`
+}
+
+/** Recovery code, e.g. "R7K2M-9QP4X-N8V3B" */
+export function generateRecoveryCode(): string {
+  return `R${randomCode(4)}-${randomCode(5)}-${randomCode(5)}`
+}
+
+export function generateToken(): string {
+  return randomBytes(32).toString('hex')
+}
+
+const CODE_RE = /^[A-Z2-9]+$/
+
+/** Normalize user-supplied codes (invite / recovery): uppercase, strip separators & spaces */
+export function normalizeCode(input: string): string {
+  return (input || '').toUpperCase().replace(/[\s\-_]+/g, '')
+}
+
+export function isValidCodeShape(normalized: string, min = 6, max = 16): boolean {
+  return normalized.length >= min && normalized.length <= max && CODE_RE.test(normalized)
+}
+
+
+
+================================================================
+FILE: src\lib\notify.ts
+================================================================
+/**
+ * Fire-and-forget notifier: pushes realtime events from Next.js API routes to
+ * Firebase Firestore. The Socket.IO service remains a compatibility transport
+ * for presence, typing, and socket-originated messages while the migration is
+ * rolled out.
+ */
+import {
+  publishFirebaseBroadcastEvent,
+  publishFirebaseUserEvent,
+} from '@/lib/firebase-admin'
+
+const INTERNAL_URL = process.env.INTERNAL_NOTIFY_URL ?? 'http://127.0.0.1:3004/notify'
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? 'ghostline-internal-dev'
+
+async function postNotify(body: Record<string, unknown>, event: string): Promise<void> {
+  try {
+    const res = await fetch(INTERNAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-token': INTERNAL_TOKEN },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(2000),
+    })
+    if (!res.ok) {
+      console.warn(`[notify] service responded ${res.status} for event=${event}`)
+    }
+  } catch {
+    console.warn(`[notify] service unreachable for event=${event} (clients will poll instead)`)
+  }
+}
+
+export async function notifyUsers(userIds: string[], event: string, payload: unknown): Promise<void> {
+  if (userIds.length === 0) return
+  const [firebaseResult] = await Promise.allSettled([
+    publishFirebaseUserEvent(userIds, event, payload),
+    postNotify({ userIds, event, payload }, event),
+  ])
+  if (firebaseResult.status === 'rejected') {
+    console.error(`[notify] Firebase publish failed for event=${event}:`, firebaseResult.reason)
+  }
+}
+
+/**
+ * Broadcast to a named socket.io room (e.g. the global "feed" room every
+ * connected client joins). Used for Buzz feed events â€” everyone sees them.
+ */
+export async function notifyRoom(room: string, event: string, payload: unknown): Promise<void> {
+  const [firebaseResult] = await Promise.allSettled([
+    publishFirebaseBroadcastEvent(room, event, payload),
+    postNotify({ rooms: [room], event, payload }, event),
+  ])
+  if (firebaseResult.status === 'rejected') {
+    console.error(`[notify] Firebase publish failed for event=${event}:`, firebaseResult.reason)
+  }
+}
+
+
+
+================================================================
+FILE: src\lib\post-retention.ts
+================================================================
+export const POST_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
+
+export function getPostRetentionCutoff(now = Date.now()): Date {
+  return new Date(now - POST_RETENTION_MS)
+}
+
+
+
+================================================================
+FILE: src\lib\session.ts
+================================================================
+
+import { randomUUID } from 'crypto'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import {
+  FieldValue,
+  Timestamp,
+} from 'firebase-admin/firestore'
+import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
+import {
+  generateToken,
+  generatePublicId,
+  generateInviteCode,
+  generateRecoveryCode,
+} from '@/lib/ids'
+
+export const SESSION_COOKIE = 'ghostline_session'
+
+const SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000
+const SESSION_EXTEND_THRESHOLD_MS = 60 * 24 * 60 * 60 * 1000
+
+export type ProfileRecord = {
+  id: string
+  publicId: string
+  displayName: string
+  inviteCode: string
+  recoveryCode: string
+  avatarFileId: string | null
+  nearbyVisible: boolean
+  showInPeople: boolean
+  notifyWhenPeopleOnline: boolean
+  onlineNotificationAudience: string
+  defaultStoryAudience: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type PresenceRecord = {
+  userId: string
+  isOnline: boolean
+  lastHeartbeatAt: Date | null
+  lastSeenAt: Date
+}
+
+export type LocationRecord = {
+  userId: string
+  lat?: number
+  lng?: number
+  accuracy?: number | null
+  updatedAt: Date
+}
+
+export type SessionRecord = {
+  id: string
+  token: string
+  socketToken: string
+  userId: string
+  createdAt: Date
+  lastSeenAt: Date
+  expiresAt: Date
+}
+
+export type AuthContext = {
+  profile: ProfileRecord
+  sessionId: string
+  token: string
+}
+
+function asDate(value: unknown, fallback = new Date()): Date {
+  if (value instanceof Date) return value
+  if (value instanceof Timestamp) return value.toDate()
+  if (
+    value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof value.toDate === 'function'
+  ) {
+    return value.toDate()
+  }
+  return fallback
+}
+
+function profileFromData(
+  id: string,
+  data: FirebaseFirestore.DocumentData,
+): ProfileRecord {
+  return {
+    id,
+    publicId: String(data.publicId),
+    displayName: String(data.displayName),
+    inviteCode: String(data.inviteCode),
+    recoveryCode: String(data.recoveryCode),
+    avatarFileId: data.avatarFileId ?? null,
+    nearbyVisible: data.nearbyVisible ?? false,
+    showInPeople: data.showInPeople ?? true,
+    notifyWhenPeopleOnline: data.notifyWhenPeopleOnline ?? true,
+    onlineNotificationAudience: data.onlineNotificationAudience ?? 'anyone',
+    defaultStoryAudience: data.defaultStoryAudience ?? 'public',
+    createdAt: asDate(data.createdAt),
+    updatedAt: asDate(data.updatedAt),
+  }
+}
+
+function presenceFromData(
+  userId: string,
+  data: FirebaseFirestore.DocumentData,
+): PresenceRecord {
+  return {
+    userId,
+    isOnline: data.isOnline ?? false,
+    lastHeartbeatAt: data.lastHeartbeatAt
+      ? asDate(data.lastHeartbeatAt)
+      : null,
+    lastSeenAt: asDate(data.lastSeenAt),
+  }
+}
+
+function locationFromData(
+  userId: string,
+  data: FirebaseFirestore.DocumentData,
+): LocationRecord {
+  return {
+    userId,
+    lat: data.lat,
+    lng: data.lng,
+    accuracy: data.accuracy ?? null,
+    updatedAt: asDate(data.updatedAt),
+  }
+}
+
+function sessionFromData(
+  token: string,
+  data: FirebaseFirestore.DocumentData,
+): SessionRecord {
+  return {
+    id: token,
+    token,
+    socketToken: String(data.socketToken),
+    userId: String(data.userId),
+    createdAt: asDate(data.createdAt),
+    lastSeenAt: asDate(data.lastSeenAt),
+    expiresAt: asDate(data.expiresAt),
+  }
+}
+
+export async function getPresence(userId: string) {
+  const snap = await getFirebaseAdminFirestore()
+    .collection('presences')
+    .doc(userId)
+    .get()
+
+  return snap.exists
+    ? presenceFromData(userId, snap.data()!)
+    : null
+}
+
+export async function getLocation(userId: string) {
+  const snap = await getFirebaseAdminFirestore()
+    .collection('locations')
+    .doc(userId)
+    .get()
+
+  return snap.exists
+    ? locationFromData(userId, snap.data()!)
+    : null
+}
+
+export async function getSessionByToken(token: string) {
+  const snap = await getFirebaseAdminFirestore()
+    .collection('sessions')
+    .doc(token)
+    .get()
+
+  if (!snap.exists) return null
+  return sessionFromData(token, snap.data()!)
+}
+
+async function loadSessionByToken(token: string) {
+  const firestore = getFirebaseAdminFirestore()
+  const session = await getSessionByToken(token)
+
+  if (!session) return null
+
+  if (session.expiresAt.getTime() < Date.now()) {
+    await firestore.collection('sessions').doc(token).delete()
+      .catch(() => undefined)
+    return null
+  }
+
+  const profileSnap = await firestore
+    .collection('profiles')
+    .doc(session.userId)
+    .get()
+
+  if (!profileSnap.exists) {
+    await firestore.collection('sessions').doc(token).delete()
+      .catch(() => undefined)
+    return null
+  }
+
+  return {
+    session,
+    profile: profileFromData(session.userId, profileSnap.data()!),
+  }
+}
+
+export async function getAuth(): Promise<AuthContext | null> {
+  const jar = await cookies()
+  const token = jar.get(SESSION_COOKIE)?.value
+
+  if (!token) return null
+
+  const loaded = await loadSessionByToken(token)
+  if (!loaded) return null
+
+  const { session, profile } = loaded
+  const now = Date.now()
+  const remaining = session.expiresAt.getTime() - now
+  const firestore = getFirebaseAdminFirestore()
+
+  if (remaining < SESSION_EXTEND_THRESHOLD_MS) {
+    await firestore.collection('sessions').doc(token).update({
+      expiresAt: Timestamp.fromMillis(now + SESSION_TTL_MS),
+      lastSeenAt: FieldValue.serverTimestamp(),
+    }).catch(() => undefined)
+  } else if (now - session.lastSeenAt.getTime() > 10 * 60_000) {
+    await firestore.collection('sessions').doc(token).update({
+      lastSeenAt: FieldValue.serverTimestamp(),
+    }).catch(() => undefined)
+  }
+
+  return {
+    profile,
+    sessionId: session.id,
+    token,
+  }
+}
+
+export async function requireAuth(): Promise<AuthContext> {
+  const auth = await getAuth()
+
+  if (!auth) {
+    const err = new Error('Authentication required') as Error & {
+      status?: number
+      code?: string
+    }
+    err.status = 401
+    err.code = 'UNAUTHENTICATED'
+    throw err
+  }
+
+  return auth
+}
+
+export function attachSessionCookie(res: NextResponse, token: string) {
+  res.cookies.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 60 * 60 * 24 * 365,
+    path: '/',
+  })
+  return res
+}
+
+export function clearSessionCookie(res: NextResponse) {
+  res.cookies.set(SESSION_COOKIE, '', {
+    httpOnly: true,
+    maxAge: 0,
+    path: '/',
+  })
+  return res
+}
+
+export async function createAnonymousIdentity(displayName: string) {
+  const firestore = getFirebaseAdminFirestore()
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const id = randomUUID()
+    const publicId = generatePublicId()
+    const inviteCode = generateInviteCode()
+    const recoveryCode = generateRecoveryCode()
+    const profileRef = firestore.collection('profiles').doc(id)
+    const presenceRef = firestore.collection('presences').doc(id)
+
+    try {
+      const profile = await firestore.runTransaction(async (tx) => {
+        const checks = await Promise.all([
+          tx.get(
+            firestore.collection('profiles')
+              .where('publicId', '==', publicId).limit(1),
+          ),
+          tx.get(
+            firestore.collection('profiles')
+              .where('inviteCode', '==', inviteCode).limit(1),
+          ),
+          tx.get(
+            firestore.collection('profiles')
+              .where('recoveryCode', '==', recoveryCode).limit(1),
+          ),
+        ])
+
+        if (checks.some((result) => !result.empty)) {
+          throw new Error('IDENTITY_CODE_COLLISION')
+        }
+
+        const now = Timestamp.now()
+
+        const data = {
+          publicId,
+          displayName,
+          inviteCode,
+          recoveryCode,
+          avatarFileId: null,
+          nearbyVisible: false,
+          showInPeople: true,
+          notifyWhenPeopleOnline: true,
+          onlineNotificationAudience: 'anyone',
+          defaultStoryAudience: 'public',
+          createdAt: now,
+          updatedAt: now,
+        }
+
+        tx.create(profileRef, data)
+        tx.create(presenceRef, {
+          userId: id,
+          isOnline: false,
+          lastHeartbeatAt: null,
+          lastSeenAt: now,
+        })
+
+        return profileFromData(id, data)
+      })
+
+      return profile
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'IDENTITY_CODE_COLLISION' &&
+        attempt < 4
+      ) {
+        continue
+      }
+
+      console.error('[session] Failed to create Firebase identity:', error)
+      throw error
+    }
+  }
+
+  throw new Error('Could not generate a unique identity after five attempts.')
+}
+
+export async function createSessionForUser(userId: string) {
+  const firestore = getFirebaseAdminFirestore()
+  const token = generateToken()
+  const socketToken = generateToken()
+  const now = Date.now()
+
+  const session: SessionRecord = {
+    id: token,
+    token,
+    socketToken,
+    userId,
+    createdAt: new Date(now),
+    lastSeenAt: new Date(now),
+    expiresAt: new Date(now + SESSION_TTL_MS),
+  }
+
+  await firestore.collection('sessions').doc(token).create({
+    token,
+    socketToken,
+    userId,
+    createdAt: Timestamp.fromMillis(now),
+    lastSeenAt: Timestamp.fromMillis(now),
+    expiresAt: Timestamp.fromMillis(now + SESSION_TTL_MS),
+  })
+
+  return session
+}
+
+export async function findProfileByRecoveryCode(candidates: string[]) {
+  const firestore = getFirebaseAdminFirestore()
+
+  for (const candidate of candidates) {
+    const result = await firestore.collection('profiles')
+      .where('recoveryCode', '==', candidate)
+      .limit(1)
+      .get()
+
+    if (!result.empty) {
+      const doc = result.docs[0]
+      return profileFromData(doc.id, doc.data())
+    }
+  }
+
+  return null
+}
+
+
+
+================================================================
+FILE: src\lib\uploads.ts
+================================================================
+import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
+import { ApiError } from '@/lib/api-helpers'
+
+export const UPLOAD_LIMITS = {
+  image: 8 * 1024 * 1024,
+  video: 50 * 1024 * 1024,
+  avatar: 4 * 1024 * 1024,
+}
+
+export type UploadKind = 'image' | 'video' | 'avatar'
+
+/**
+ * Media uploads remain disabled during the Hushly migration. No new media
+ * bytes are stored by this application.
+ */
+export async function saveUpload(
+  _raw: File,
+  _kind: UploadKind,
+  _ownerId: string,
+): Promise<{
+  id: string
+  kind: string
+  mime: string
+  size: number
+  url: string
+}> {
+  throw new ApiError(
+    503,
+    'MEDIA_DISABLED',
+    'Image, video, and avatar uploads are temporarily unavailable.',
+  )
+}
+
+/** Existing media bytes are no longer served through this helper. */
+export async function loadStoredFile(_fileId: string): Promise<never> {
+  throw new ApiError(
+    410,
+    'MEDIA_UNAVAILABLE',
+    'This media is unavailable because media storage has been disabled.',
+  )
+}
+
+/** Remove Firestore file metadata; this does not delete cloud storage objects. */
+export async function destroyFileRow(
+  fileId: string | null | undefined,
+): Promise<void> {
+  if (!fileId) return
+
+  const firestore = getFirebaseAdminFirestore()
+  const fileRef = firestore.collection('files').doc(fileId)
+  const snapshot = await fileRef.get()
+  if (!snapshot.exists) return
+
+  await fileRef.delete()
+}
+
+/** Kept for compatibility; external storage cleanup is intentionally disabled. */
+export async function unlinkByStoragePath(
+  _storagePath: string | null | undefined,
+): Promise<void> {
+  // Intentionally no-op. Previously stored cloud objects are not deleted here.
+}
+
