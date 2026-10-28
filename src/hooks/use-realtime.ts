@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -29,7 +29,12 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
   }, [myPublicId])
 
   useEffect(() => {
-    if (!socketToken || !myPublicId) return
+    // Do not connect Socket.IO to the Netlify site itself.
+    // Firebase handles realtime when no external Socket.IO origin is configured.
+    if (!socketToken || !myPublicId || !process.env.NEXT_PUBLIC_REALTIME_URL) {
+      setSocketConnected(false)
+      return
+    }
     const socket = getSocket(socketToken)
 
     const markRead = (conversationId: string) => {
@@ -93,7 +98,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       subscribeConv(data?.conversationId)
       if (data?.conversationId !== activeRef.current) {
-        toast(data?.groupName ? `Added to “${data.groupName}”` : 'New conversation started', {
+        toast(data?.groupName ? `Added to â€œ${data.groupName}â€` : 'New conversation started', {
           description: 'Open Chats to say hello.',
         })
       }
@@ -120,7 +125,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
         closeConversation()
         toast(
           data.reason === 'account_deleted'
-            ? 'This conversation ended — the other person deleted their account.'
+            ? 'This conversation ended â€” the other person deleted their account.'
             : 'This conversation was closed and removed.'
         )
       }
@@ -202,3 +207,4 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
     }
   }, [socketToken, myPublicId, queryClient, closeConversation, setSocketConnected, setTab, setTyping])
 }
+
