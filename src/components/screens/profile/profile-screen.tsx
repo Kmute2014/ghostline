@@ -53,7 +53,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ContactsCard } from './contacts-card'
 import { BlockedUsersCard } from './blocked-card'
-import { NotificationsCard, OnlineNotificationsCard } from './notifications-card'
+import { NotificationsCard } from './notifications-card'
 import { CodeRow, copyWithToast, relativeTime } from './profile-bits'
 import type { OwnProfile } from '@/lib/types'
 
@@ -851,8 +851,7 @@ export function ProfileScreen() {
             </p>
           </div>
           <div className="grid items-start gap-4 md:grid-cols-2 md:gap-5">
-            <NotificationsCard />
-            <OnlineNotificationsCard profile={profile} applyProfile={applyProfile} />
+            <NotificationsCard profile={profile} applyProfile={applyProfile} />
             <InstallCard />
           </div>
         </section>

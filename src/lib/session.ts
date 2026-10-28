@@ -28,7 +28,10 @@ export type ProfileRecord = {
   avatarFileId: string | null
   nearbyVisible: boolean
   showInPeople: boolean
+  notifyOnChat: boolean
   notifyWhenPeopleOnline: boolean
+  notifyOnBuzz: boolean
+  notifyOnStories: boolean
   onlineNotificationAudience: string
   defaultStoryAudience: string
   createdAt: Date
@@ -93,7 +96,10 @@ function profileFromData(
     avatarFileId: data.avatarFileId ?? null,
     nearbyVisible: data.nearbyVisible ?? false,
     showInPeople: data.showInPeople ?? true,
+    notifyOnChat: data.notifyOnChat ?? true,
     notifyWhenPeopleOnline: data.notifyWhenPeopleOnline ?? true,
+    notifyOnBuzz: data.notifyOnBuzz ?? true,
+    notifyOnStories: data.notifyOnStories ?? true,
     onlineNotificationAudience: data.onlineNotificationAudience ?? 'anyone',
     defaultStoryAudience: data.defaultStoryAudience ?? 'public',
     createdAt: asDate(data.createdAt),
@@ -314,7 +320,10 @@ export async function createAnonymousIdentity(displayName: string) {
           avatarFileId: null,
           nearbyVisible: false,
           showInPeople: true,
+          notifyOnChat: true,
           notifyWhenPeopleOnline: true,
+          notifyOnBuzz: true,
+          notifyOnStories: true,
           onlineNotificationAudience: 'anyone',
           defaultStoryAudience: 'public',
           createdAt: now,

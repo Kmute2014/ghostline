@@ -99,7 +99,10 @@ export const api = {
         | 'displayName'
         | 'nearbyVisible'
         | 'showInPeople'
+        | 'notifyOnChat'
         | 'notifyWhenPeopleOnline'
+        | 'notifyOnBuzz'
+        | 'notifyOnStories'
         | 'onlineNotificationAudience'
         | 'defaultStoryAudience'
       > & {

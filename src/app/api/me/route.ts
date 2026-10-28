@@ -59,7 +59,10 @@ export const PATCH = handle(async (req: NextRequest) => {
     if (!visible) await firestore.collection('locations').doc(auth.profile.id).delete()
   }
   if (body.showInPeople !== undefined) data.showInPeople = Boolean(body.showInPeople)
+  if (body.notifyOnChat !== undefined) data.notifyOnChat = Boolean(body.notifyOnChat)
   if (body.notifyWhenPeopleOnline !== undefined) data.notifyWhenPeopleOnline = Boolean(body.notifyWhenPeopleOnline)
+  if (body.notifyOnBuzz !== undefined) data.notifyOnBuzz = Boolean(body.notifyOnBuzz)
+  if (body.notifyOnStories !== undefined) data.notifyOnStories = Boolean(body.notifyOnStories)
   if (body.onlineNotificationAudience !== undefined) {
     if (body.onlineNotificationAudience !== 'anyone' && body.onlineNotificationAudience !== 'friends') {
       throw badRequest('Choose anyone or friends for online notifications.', 'INVALID_ONLINE_NOTIFICATION_AUDIENCE')
