@@ -1,6 +1,5 @@
 ﻿
 import {
-  applicationDefault,
   cert,
   getApps,
   initializeApp,
@@ -60,10 +59,20 @@ function getAdminApp(): App {
       ...(projectId ? { projectId } : {}),
     })
   } else {
-    adminApp = initializeApp({
-      credential: applicationDefault(),
-      ...(projectId ? { projectId } : {}),
-    })
+    const credentialPresence = {
+      FIREBASE_SERVICE_ACCOUNT_JSON: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON),
+      FIREBASE_SERVICE_ACCOUNT_BASE64: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64),
+      FIREBASE_CLIENT_EMAIL: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
+      FIREBASE_PRIVATE_KEY: Boolean(process.env.FIREBASE_PRIVATE_KEY),
+    }
+
+    const missing = Object.entries(credentialPresence)
+      .filter(([, present]) => !present)
+      .map(([name]) => name)
+
+    throw new Error(
+      `Firebase Admin credentials unavailable in this deployment. Missing variables: ${missing.join(', ') || 'credential configuration could not be resolved'}`,
+    )
   }
 
   return adminApp
@@ -127,4 +136,5 @@ export async function publishFirebaseBroadcastEvent(
       expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     })
 }
+
 
