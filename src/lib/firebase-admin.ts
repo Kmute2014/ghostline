@@ -28,6 +28,7 @@ function getAdminApp(): App {
     process.env.FIREBASE_PROJECT_ID ??
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
 
+  
   const serviceAccountValue =
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON ??
     (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64
@@ -35,32 +36,15 @@ function getAdminApp(): App {
           process.env.FIREBASE_SERVICE_ACCOUNT_BASE64,
           'base64',
         ).toString('utf8')
+      : undefined) ??
+    (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
+      ? JSON.stringify({
+          type: 'service_account',
+          ...(projectId ? { project_id: projectId } : {}),
+          client_email: process.env.FIREBASE_CLIENT_EMAIL,
+          private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        })
       : undefined)
-
-  if (serviceAccountValue) {
-    let serviceAccount
-
-    try {
-      serviceAccount = JSON.parse(serviceAccountValue)
-    } catch {
-      throw new Error(
-        'Firebase service-account environment variable is not valid JSON.',
-      )
-    }
-
-    adminApp = initializeApp({
-      credential: cert(serviceAccount),
-      ...(projectId ? { projectId } : {}),
-    })
-  } else {
-    adminApp = initializeApp({
-      credential: applicationDefault(),
-      ...(projectId ? { projectId } : {}),
-    })
-  }
-
-  return adminApp
-}
 
 export function getFirebaseAdminFirestore() {
   return getFirestore(getAdminApp())
