@@ -1,4 +1,4 @@
-﻿import { NextRequest } from 'next/server'
+import { NextRequest } from 'next/server'
 import { Timestamp } from 'firebase-admin/firestore'
 import { handle, ok, unauthorized, badRequest, tooMany } from '@/lib/api-helpers'
 import { getAuth } from '@/lib/session'
@@ -90,7 +90,7 @@ export const POST = handle(async (req: NextRequest) => {
     if (!fileId) throw badRequest('Media is required for image/video stories.', 'MEDIA_REQUIRED')
     const fileSnap = await firestore.collection('files').doc(fileId).get()
     const file = fileSnap.data()
-    if (!fileSnap.exists || file?.ownerId !== auth.profile.id) throw badRequest('Invalid media.', 'INVALID_MEDIA')
+    if (!fileSnap.exists || !file || file.ownerId !== auth.profile.id) throw badRequest('Invalid media.', 'INVALID_MEDIA')
     const expectedKind = type === 'image' ? ['image'] : ['video']
     if (!expectedKind.includes(String(file.kind))) throw badRequest('Media does not match the story type.', 'INVALID_MEDIA')
   }
