@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  where,
   type DocumentData,
 } from 'firebase/firestore'
 import { signInWithCustomToken } from 'firebase/auth'
@@ -123,7 +124,9 @@ function attachEventListener(
   onError: (error: Error) => void,
 ) {
   const collectionRef = collection(getFirebaseClientFirestore(), collectionPath.join('/'))
-  const eventsQuery = query(collectionRef, orderBy('createdAt', 'desc'), limit(50))
+  const eventsQuery = collectionPath[0] === 'realtimeBroadcasts'
+    ? query(collectionRef, where('room', '==', 'feed'), orderBy('createdAt', 'desc'), limit(50))
+    : query(collectionRef, orderBy('createdAt', 'desc'), limit(50))
   let initialSnapshot = true
 
   return onSnapshot(
@@ -201,4 +204,5 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined, on
     }
   }, [firebaseToken, queryClient, onConnectionChange])
 }
+
 
