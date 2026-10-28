@@ -1,5 +1,4 @@
-
-import { randomUUID } from 'crypto'
+﻿import { randomUUID } from 'crypto'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import {
@@ -67,11 +66,13 @@ export type AuthContext = {
   profile: ProfileRecord
   sessionId: string
   token: string
+  session: SessionRecord
 }
 
 function asDate(value: unknown, fallback = new Date()): Date {
   if (value instanceof Date) return value
   if (value instanceof Timestamp) return value.toDate()
+
   if (
     value &&
     typeof value === 'object' &&
@@ -80,6 +81,7 @@ function asDate(value: unknown, fallback = new Date()): Date {
   ) {
     return value.toDate()
   }
+
   return fallback
 }
 
@@ -178,6 +180,7 @@ export async function getSessionByToken(token: string) {
     .get()
 
   if (!snap.exists) return null
+
   return sessionFromData(token, snap.data()!)
 }
 
@@ -190,6 +193,7 @@ async function loadSessionByToken(token: string) {
   if (session.expiresAt.getTime() < Date.now()) {
     await firestore.collection('sessions').doc(token).delete()
       .catch(() => undefined)
+
     return null
   }
 
@@ -201,6 +205,7 @@ async function loadSessionByToken(token: string) {
   if (!profileSnap.exists) {
     await firestore.collection('sessions').doc(token).delete()
       .catch(() => undefined)
+
     return null
   }
 
@@ -239,6 +244,7 @@ export async function getAuth(): Promise<AuthContext | null> {
     profile,
     sessionId: session.id,
     token,
+    session,
   }
 }
 
@@ -250,6 +256,7 @@ export async function requireAuth(): Promise<AuthContext> {
       status?: number
       code?: string
     }
+
     err.status = 401
     err.code = 'UNAUTHENTICATED'
     throw err
@@ -266,6 +273,7 @@ export function attachSessionCookie(res: NextResponse, token: string) {
     maxAge: 60 * 60 * 24 * 365,
     path: '/',
   })
+
   return res
 }
 
@@ -275,6 +283,7 @@ export function clearSessionCookie(res: NextResponse) {
     maxAge: 0,
     path: '/',
   })
+
   return res
 }
 
@@ -294,15 +303,18 @@ export async function createAnonymousIdentity(displayName: string) {
         const checks = await Promise.all([
           tx.get(
             firestore.collection('profiles')
-              .where('publicId', '==', publicId).limit(1),
+              .where('publicId', '==', publicId)
+              .limit(1),
           ),
           tx.get(
             firestore.collection('profiles')
-              .where('inviteCode', '==', inviteCode).limit(1),
+              .where('inviteCode', '==', inviteCode)
+              .limit(1),
           ),
           tx.get(
             firestore.collection('profiles')
-              .where('recoveryCode', '==', recoveryCode).limit(1),
+              .where('recoveryCode', '==', recoveryCode)
+              .limit(1),
           ),
         ])
 
@@ -331,6 +343,7 @@ export async function createAnonymousIdentity(displayName: string) {
         }
 
         tx.create(profileRef, data)
+
         tx.create(presenceRef, {
           userId: id,
           isOnline: false,
