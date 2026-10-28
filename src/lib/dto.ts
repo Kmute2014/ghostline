@@ -1,3 +1,4 @@
+
 import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
 import { Timestamp } from 'firebase-admin/firestore'
 import { approximateDistance } from '@/lib/geo'
@@ -36,7 +37,9 @@ export function toPublicProfile(
     displayName: profile.displayName,
     avatarUrl: avatarUrlFor(profile.avatarFileId),
     online: overrides?.online ?? (presence?.isOnline ?? false),
-    lastSeenAt: presence?.isOnline ? null : presence?.lastSeenAt?.toISOString() ?? null,
+    lastSeenAt: presence?.isOnline
+      ? null
+      : presence?.lastSeenAt?.toISOString() ?? null,
   }
 }
 
@@ -71,14 +74,19 @@ export function toOwnProfile(
     notifyOnBuzz: profile.notifyOnBuzz,
     notifyOnStories: profile.notifyOnStories,
     onlineNotificationAudience:
-      profile.onlineNotificationAudience === 'friends' ? 'friends' : 'anyone',
-    defaultStoryAudience: profile.defaultStoryAudience === 'friends' ? 'friends' : 'public',
+      profile.onlineNotificationAudience === 'friends'
+        ? 'friends'
+        : 'anyone',
+    defaultStoryAudience:
+      profile.defaultStoryAudience === 'friends' ? 'friends' : 'public',
     inviteCode: profile.inviteCode,
     recoveryCode: profile.recoveryCode,
     createdAt: profile.createdAt.toISOString(),
     locationUpdatedAt: location?.updatedAt.toISOString() ?? null,
     online: presence?.isOnline ?? false,
-    lastSeenAt: presence?.isOnline ? null : presence?.lastSeenAt?.toISOString() ?? null,
+    lastSeenAt: presence?.isOnline
+      ? null
+      : presence?.lastSeenAt?.toISOString() ?? null,
   }
 }
 
@@ -102,15 +110,22 @@ type ParticipantRow = {
 
 type PresenceByUser = Map<string, PresenceRow>
 
-type ContactFlags = Map<string, { nickname: string | null; favorite: boolean }>
+type ContactFlags = Map<
+  string,
+  { nickname: string | null; favorite: boolean }
+>
 
 export type { ContactFlags }
 
-/**
- * Builds the client summary for a conversation (direct or group) from a fully
- * loaded conversation row (participants included). Presence is passed in a
- * side map because call sites load it differently.
- */
+type SummaryMessage = {
+  id: string
+  senderId: string
+  type: string
+  text: string | null
+  createdAt: Date
+  deletedForEveryone: boolean
+  hiddenForUserIds: string[]
+}
 
 export async function toConversationSummary(
   conversation: ConversationRow,
@@ -123,17 +138,20 @@ export async function toConversationSummary(
   const isGroup = conversation.type === 'group'
   const others = participants.filter((p) => p.userId !== meId)
   const myPart = participants.find((p) => p.userId === meId)
+  const otherIds = new Set(others.map((p) => p.userId))
+  const lastReadAt = myPart?.lastReadAt ?? null
 
-  const messagesSnapshot = await firestore
+  const messagesRef = firestore
     .collection('conversations')
     .doc(conversation.id)
     .collection('messages')
-    .orderBy('createdAt', 'desc')
-    .get()
 
-  const messageRows = messagesSnapshot.docs.map((doc) => {
+  const parseMessage = (
+    doc: FirebaseFirestore.QueryDocumentSnapshot
+  ): SummaryMessage => {
     const data = doc.data()
     const rawDate = data.createdAt
+
     const createdAt =
       rawDate instanceof Timestamp
         ? rawDate.toDate()
@@ -141,41 +159,90 @@ export async function toConversationSummary(
           ? rawDate
           : new Date(rawDate ?? Date.now())
 
-    const deletedAt = data.deletedForEveryoneAt
-    const deletedForEveryone = Boolean(deletedAt)
-
     return {
       id: doc.id,
       senderId: String(data.senderId ?? ''),
       type: String(data.type ?? 'text'),
       text: data.text == null ? null : String(data.text),
       createdAt,
-      deletedForEveryone,
+      deletedForEveryone: Boolean(data.deletedForEveryoneAt),
       hiddenForUserIds: Array.isArray(data.hiddenForUserIds)
         ? data.hiddenForUserIds.map(String)
         : [],
     }
-  })
+  }
 
-  const visibleMessages = messageRows.filter(
-    (message) => !message.hiddenForUserIds.includes(meId)
-  )
+  let lastMessage: SummaryMessage | null = null
+  let unreadCount = 0
 
-  const lastMessage = visibleMessages[0] ?? null
+  if (!lastReadAt) {
+    // Read once and reuse the result for the preview and unread count.
+    const snapshot = await messagesRef
+      .orderBy('createdAt', 'desc')
+      .get()
 
-  const otherIds = new Set(others.map((participant) => participant.userId))
-  const lastReadAt = myPart?.lastReadAt ?? null
+    const messages = snapshot.docs.map(parseMessage)
 
-  const unreadCount = messageRows.filter((message) => {
-    if (message.deletedForEveryone) return false
-    if (message.hiddenForUserIds.includes(meId)) return false
-    if (!otherIds.has(message.senderId)) return false
-    if (lastReadAt && message.createdAt <= lastReadAt) return false
-    return true
-  }).length
+    lastMessage =
+      messages.find(
+        (message) => !message.hiddenForUserIds.includes(meId)
+      ) ?? null
+
+    unreadCount = messages.filter((message) => {
+      if (message.deletedForEveryone) return false
+      if (message.hiddenForUserIds.includes(meId)) return false
+      if (!otherIds.has(message.senderId)) return false
+      return true
+    }).length
+  } else {
+    // Only retrieve messages newer than the user's last-read timestamp
+    // when calculating the unread count.
+    const unreadSnapshot = await messagesRef
+      .where('createdAt', '>', Timestamp.fromDate(lastReadAt))
+      .get()
+
+    unreadCount = unreadSnapshot.docs
+      .map(parseMessage)
+      .filter((message) => {
+        if (message.deletedForEveryone) return false
+        if (message.hiddenForUserIds.includes(meId)) return false
+        if (!otherIds.has(message.senderId)) return false
+        return true
+      }).length
+
+    // Fetch the latest message in batches instead of loading the
+    // entire conversation history just to display a preview.
+    const batchSize = 20
+    let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined
+
+    while (!lastMessage) {
+      let query = messagesRef
+        .orderBy('createdAt', 'desc')
+        .limit(batchSize)
+
+      if (cursor) {
+        query = query.startAfter(cursor)
+      }
+
+      const snapshot = await query.get()
+
+      if (snapshot.empty) break
+
+      const messages = snapshot.docs.map(parseMessage)
+
+      lastMessage =
+        messages.find(
+          (message) => !message.hiddenForUserIds.includes(meId)
+        ) ?? null
+
+      cursor = snapshot.docs[snapshot.docs.length - 1]
+
+      if (snapshot.size < batchSize) break
+    }
+  }
 
   const senderPart = lastMessage
-    ? participants.find((p) => p.userId === lastMessage.senderId)
+    ? participants.find((p) => p.userId === lastMessage!.senderId)
     : undefined
 
   const lastMessageDTO = lastMessage
