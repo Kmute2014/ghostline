@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server'
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { handle, ok, unauthorized, notFound, badRequest, tooMany } from '@/lib/api-helpers'
 import { getAuth } from '@/lib/session'
-import { getFirebaseAdminFirestore, publishFirebaseUserEvent } from '@/lib/firebase-admin'
+import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
 import { getPostRetentionCutoff } from '@/lib/post-retention'
+import { notifyUsers } from '@/lib/notify'
 
 export const dynamic = 'force-dynamic'
 type Ctx = { params: Promise<{ id: string }> }
@@ -36,7 +37,7 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
     tx.update(postRef, { voteScore, updatedAt: FieldValue.serverTimestamp() })
   })
   if (value !== 0 && previousValue !== value) {
-    await publishFirebaseUserEvent([String(post.authorId)], 'buzz:notification', {
+    await notifyUsers([String(post.authorId)], 'buzz:notification', {
       title: 'Buzz', body: 'Someone voted on your post.', tag: `buzz-post-${id}`, url: '/?tab=feed', postId: id,
     })
   }

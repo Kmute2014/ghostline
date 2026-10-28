@@ -329,7 +329,7 @@ export function NotificationsCard({
           <div className="flex items-center justify-between gap-3">
             <div>
               <Label className="text-sm font-medium">Buzz</Label>
-              <p className="text-[11px] text-muted-foreground">Replies and activity on posts you joined</p>
+              <p className="text-[11px] text-muted-foreground">New posts, replies and activity on Buzz</p>
             </div>
             <Switch
               checked={profile.notifyOnBuzz}

@@ -3,6 +3,7 @@
   publishFirebaseBroadcastEvent,
   publishFirebaseUserEvent,
 } from '@/lib/firebase-admin'
+import { blockedIdsFor } from '@/lib/firestore-route-helpers'
 import { sendPushToUser, type PushPayload } from '@/lib/push'
 
 export type NotificationPreference =
@@ -45,7 +46,7 @@ function pushPayloadFor(event: string, value: unknown): PushPayload | null {
       title: String(p.title ?? 'New story'),
       body: String(p.body ?? 'Someone shared a new story'),
       tag: `story-${String(p.storyId ?? 'new')}`,
-      url: '/',
+      url: typeof p.url === 'string' ? p.url : '/?tab=stories',
     }
   }
 
@@ -59,6 +60,56 @@ function pushPayloadFor(event: string, value: unknown): PushPayload | null {
   }
 
   return null
+}
+
+export async function notifyPeopleOnline(
+  userId: string,
+  publicId: string,
+  displayName: string,
+): Promise<void> {
+  const firestore = getFirebaseAdminFirestore()
+  const [personSnap, profilesSnap, contactsSnap, blockedIds] = await Promise.all([
+    firestore.collection('profiles').doc(userId).get(),
+    firestore.collection('profiles').get(),
+    firestore.collection('contacts').where('contactId', '==', userId).get(),
+    blockedIdsFor(firestore, userId),
+  ])
+  if (!personSnap.exists || personSnap.data()?.showInPeople === false) return
+
+  const savedBy = new Set(contactsSnap.docs.map((doc) => String(doc.data().ownerId ?? '')).filter(Boolean))
+  const recipients = profilesSnap.docs.filter((doc) => {
+    if (doc.id === userId || blockedIds.has(doc.id)) return false
+    const profile = doc.data()
+    if (profile.notifyWhenPeopleOnline === false) return false
+    const audience = String(profile.onlineNotificationAudience ?? 'anyone')
+    return audience === 'anyone' || (audience === 'friends' && savedBy.has(doc.id))
+  })
+
+  const nowIso = new Date().toISOString()
+  const tasks: Promise<unknown>[] = [
+    publishFirebaseUserEvent(recipients.map((recipient) => recipient.id), 'presence:update', {
+      publicId,
+      online: true,
+      lastSeenAt: nowIso,
+    }),
+  ]
+
+  tasks.push(
+    ...recipients.map((recipient) =>
+      sendPushToUser(recipient.id, {
+        title: 'Someone is online',
+        body: `${displayName} is now online.`,
+        tag: `online-${publicId}`,
+        url: '/?tab=people',
+      }),
+    ),
+  )
+
+  const results = await Promise.allSettled(tasks)
+  const failed = results.filter((result) => result.status === 'rejected')
+  if (failed.length) {
+    console.error(`[push] ${failed.length} recipient(s) failed for people-online notification`)
+  }
 }
 
 export async function filterNotificationRecipients(

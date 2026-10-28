@@ -2,11 +2,12 @@ import { NextRequest } from 'next/server'
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { handle, ok, unauthorized, notFound, badRequest, tooMany } from '@/lib/api-helpers'
 import { getAuth } from '@/lib/session'
-import { getFirebaseAdminFirestore, publishFirebaseBroadcastEvent, publishFirebaseUserEvent } from '@/lib/firebase-admin'
+import { getFirebaseAdminFirestore, publishFirebaseBroadcastEvent } from '@/lib/firebase-admin'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
 import { getPostRetentionCutoff } from '@/lib/post-retention'
 import { COMMENT_MAX_LEN, toPostDTO, toCommentDTO } from '@/lib/posts'
 import { blockedIdsFor, normalizeFirestoreValue } from '@/lib/firestore-route-helpers'
+import { notifyUsers } from '@/lib/notify'
 
 export const dynamic = 'force-dynamic'
 type Ctx = { params: Promise<{ id: string }> }
@@ -82,8 +83,8 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
   await batch.commit()
   void publishFirebaseBroadcastEvent('feed', 'feed:update', { reason: 'comment', postId: id }).catch(() => {})
   const notifyPromises: Promise<void>[] = []
-  if (post.authorId !== meId) notifyPromises.push(publishFirebaseUserEvent([String(post.authorId)], 'buzz:notification', { title: 'Buzz', body: 'Someone commented on your post.', tag: `buzz-post-${id}`, url: '/?tab=feed', postId: id }))
-  if (otherCommenters.length) notifyPromises.push(publishFirebaseUserEvent(otherCommenters, 'buzz:notification', { title: 'Buzz', body: 'Someone commented on a post you contributed to.', tag: `buzz-post-${id}`, url: '/?tab=feed', postId: id }))
+  if (post.authorId !== meId) notifyPromises.push(notifyUsers([String(post.authorId)], 'buzz:notification', { title: 'Buzz', body: 'Someone commented on your post.', tag: `buzz-post-${id}`, url: '/?tab=feed', postId: id }))
+  if (otherCommenters.length) notifyPromises.push(notifyUsers(otherCommenters, 'buzz:notification', { title: 'Buzz', body: 'Someone commented on a post you contributed to.', tag: `buzz-post-${id}`, url: '/?tab=feed', postId: id }))
   await Promise.all(notifyPromises)
   const commentSnap = await commentRef.get()
   const comment = await loadCommentDTO(firestore, commentSnap as never, meId)

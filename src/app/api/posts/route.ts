@@ -8,6 +8,7 @@ import { getPostRetentionCutoff } from '@/lib/post-retention'
 import { POST_MAX_LEN, HOT_CANDIDATES, FEED_TAKE, toPostDTO, hotRank } from '@/lib/posts'
 import { avatarUrlFor } from '@/lib/dto'
 import { blockedIdsFor, normalizeFirestoreValue } from '@/lib/firestore-route-helpers'
+import { notifyUsers } from '@/lib/notify'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,6 +58,20 @@ export const POST = handle(async (req: NextRequest) => {
   const ref = firestore.collection('posts').doc()
   await ref.set({ authorId: meId, text, isAnonymous, createdAt: now, updatedAt: now, commentCount: 0, voteScore: 0 })
   void publishFirebaseBroadcastEvent('feed', 'feed:update', { reason: 'post', postId: ref.id }).catch(() => {})
+  const [profilesSnap, blockedIds] = await Promise.all([
+    firestore.collection('profiles').get(),
+    blockedIdsFor(firestore, meId),
+  ])
+  const recipientIds = profilesSnap.docs
+    .map((doc) => doc.id)
+    .filter((userId) => userId !== meId && !blockedIds.has(userId))
+  await notifyUsers(recipientIds, 'buzz:notification', {
+    title: 'New Buzz post',
+    body: 'A new post was shared on Buzz.',
+    tag: `buzz-post-${ref.id}`,
+    url: '/?tab=feed',
+    postId: ref.id,
+  })
   const [authorSnap, presenceSnap] = await Promise.all([
     firestore.collection('profiles').doc(meId).get(), firestore.collection('presences').doc(meId).get(),
   ])
@@ -65,4 +80,3 @@ export const POST = handle(async (req: NextRequest) => {
   const post = { id: ref.id, authorId: meId, text, isAnonymous, createdAt: now.toDate(), updatedAt: now.toDate(), commentCount: 0, voteScore: 0, author, votes: [] }
   return ok({ post: toPostDTO(post as never, meId) })
 })
-
