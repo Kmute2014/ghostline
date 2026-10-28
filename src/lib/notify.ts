@@ -1,63 +1,98 @@
-/**
- * Fire-and-forget notifier: pushes realtime events from Next.js API routes to
- * Firebase Firestore. The Socket.IO service remains a compatibility transport
- * for presence, typing, and socket-originated messages while the migration is
- * rolled out.
- */
-import {
-  FieldPath,
-} from 'firebase-admin/firestore'
-import {
+﻿import {
   getFirebaseAdminFirestore,
   publishFirebaseBroadcastEvent,
   publishFirebaseUserEvent,
 } from '@/lib/firebase-admin'
+import { sendPushToUser, type PushPayload } from '@/lib/push'
 
-const INTERNAL_URL = process.env.INTERNAL_NOTIFY_URL ?? 'http://127.0.0.1:3004/notify'
-const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? 'ghostline-internal-dev'
+export type NotificationPreference =
+  | 'notifyOnChat'
+  | 'notifyWhenPeopleOnline'
+  | 'notifyOnBuzz'
+  | 'notifyOnStories'
 
-export type NotificationPreference = 'notifyOnChat' | 'notifyWhenPeopleOnline' | 'notifyOnBuzz' | 'notifyOnStories'
+function asRecord(value: unknown): Record<string, any> {
+  return value !== null && typeof value === 'object'
+    ? value as Record<string, any>
+    : {}
+}
+
+function pushPayloadFor(event: string, value: unknown): PushPayload | null {
+  const p = asRecord(value)
+
+  if (event === 'message:new') {
+    const sender = asRecord(p.sender)
+    const type = String(p.type ?? 'text')
+    const text = String(p.text ?? '').trim()
+
+    let body = text || 'You have a new message'
+    if (type === 'image') body = 'Sent you a photo'
+    else if (type === 'video') body = 'Sent you a video'
+    else if (type === 'audio') body = 'Sent you an audio message'
+    else if (type === 'file') body = 'Sent you a file'
+    else if (type !== 'text' && !text) body = 'Sent you a message'
+
+    return {
+      title: String(sender.displayName ?? sender.nickname ?? 'New message'),
+      body: body.slice(0, 180),
+      tag: `message-${String(p.conversationId ?? p.id ?? 'new')}`,
+      url: '/',
+    }
+  }
+
+  if (event === 'stories:update') {
+    return {
+      title: String(p.title ?? 'New story'),
+      body: String(p.body ?? 'Someone shared a new story'),
+      tag: `story-${String(p.storyId ?? 'new')}`,
+      url: '/',
+    }
+  }
+
+  if (event === 'buzz:notification') {
+    return {
+      title: String(p.title ?? 'New Buzz activity'),
+      body: String(p.body ?? p.text ?? 'There is new activity on Buzz'),
+      tag: String(p.tag ?? 'buzz'),
+      url: typeof p.url === 'string' ? p.url : '/',
+    }
+  }
+
+  return null
+}
 
 export async function filterNotificationRecipients(
   userIds: string[],
   preference: NotificationPreference,
 ): Promise<string[]> {
   const uniqueIds = [...new Set(userIds.filter(Boolean))]
-  if (uniqueIds.length === 0) return []
+  if (!uniqueIds.length) return []
 
   const firestore = getFirebaseAdminFirestore()
   const allowed: string[] = []
 
-  for (let offset = 0; offset < uniqueIds.length; offset += 30) {
-    const chunk = uniqueIds.slice(offset, offset + 30)
-    const snap = await firestore.collection('profiles').where(FieldPath.documentId(), 'in', chunk).get()
-    for (const doc of snap.docs) {
-      const profile = doc.data() ?? {}
-      if (profile[preference] !== false) allowed.push(doc.id)
-    }
+  for (let i = 0; i < uniqueIds.length; i += 30) {
+    const batch = uniqueIds.slice(i, i + 30)
+    const snapshots = await Promise.all(
+      batch.map((id) => firestore.collection('profiles').doc(id).get()),
+    )
+
+    snapshots.forEach((snapshot, index) => {
+      if (!snapshot.exists || snapshot.data()?.[preference] !== false) {
+        allowed.push(batch[index])
+      }
+    })
   }
 
   return allowed
 }
 
-async function postNotify(body: Record<string, unknown>, event: string): Promise<void> {
-  try {
-    const res = await fetch(INTERNAL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-token': INTERNAL_TOKEN },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(2000),
-    })
-    if (!res.ok) {
-      console.warn(`[notify] service responded ${res.status} for event=${event}`)
-    }
-  } catch {
-    console.warn(`[notify] service unreachable for event=${event} (clients will poll instead)`)
-  }
-}
-
-export async function notifyUsers(userIds: string[], event: string, payload: unknown): Promise<void> {
-  if (userIds.length === 0) return
+export async function notifyUsers(
+  userIds: string[],
+  event: string,
+  payload: unknown,
+): Promise<void> {
+  if (!userIds.length) return
 
   const preferenceByEvent: Partial<Record<string, NotificationPreference>> = {
     'message:new': 'notifyOnChat',
@@ -66,29 +101,46 @@ export async function notifyUsers(userIds: string[], event: string, payload: unk
   }
 
   const preference = preferenceByEvent[event]
-  const recipients = preference ? await filterNotificationRecipients(userIds, preference) : userIds
+  const recipients = preference
+    ? await filterNotificationRecipients(userIds, preference)
+    : [...new Set(userIds.filter(Boolean))]
 
-  if (recipients.length === 0) return
+  if (!recipients.length) return
 
-  const [firebaseResult] = await Promise.allSettled([
+  const tasks: Promise<unknown>[] = [
     publishFirebaseUserEvent(recipients, event, payload),
-    postNotify({ userIds: recipients, event, payload }, event),
-  ])
-  if (firebaseResult.status === 'rejected') {
-    console.error(`[notify] Firebase publish failed for event=${event}:`, firebaseResult.reason)
+  ]
+
+  const pushPayload = pushPayloadFor(event, payload)
+  if (pushPayload) {
+    tasks.push(
+      Promise.allSettled(
+        recipients.map(async (userId) => {
+          await sendPushToUser(userId, pushPayload)
+        }),
+      ).then((results) => {
+        const failed = results.filter((result) => result.status === 'rejected')
+        if (failed.length) {
+          console.error(`[push] ${failed.length} recipient(s) failed for ${event}`)
+        }
+      }),
+    )
+  }
+
+  const results = await Promise.allSettled(tasks)
+  if (results[0].status === 'rejected') {
+    console.error(`[notify] Firebase user event failed (${event}):`, results[0].reason)
   }
 }
 
-/**
- * Broadcast to a named socket.io room (e.g. the global "feed" room every
- * connected client joins). Used for Buzz feed events — everyone sees them.
- */
-export async function notifyRoom(room: string, event: string, payload: unknown): Promise<void> {
-  const [firebaseResult] = await Promise.allSettled([
-    publishFirebaseBroadcastEvent(room, event, payload),
-    postNotify({ rooms: [room], event, payload }, event),
-  ])
-  if (firebaseResult.status === 'rejected') {
-    console.error(`[notify] Firebase publish failed for event=${event}:`, firebaseResult.reason)
+export async function notifyRoom(
+  room: string,
+  event: string,
+  payload: unknown,
+): Promise<void> {
+  try {
+    await publishFirebaseBroadcastEvent(room, event, payload)
+  } catch (error) {
+    console.error(`[notify] Firebase broadcast failed (${event}):`, error)
   }
 }

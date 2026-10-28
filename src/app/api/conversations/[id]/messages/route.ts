@@ -1,3 +1,4 @@
+﻿import { notifyUsers } from '@/lib/notify'
 
 import { NextRequest } from 'next/server'
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
@@ -12,8 +13,6 @@ import { getAuth } from '@/lib/session'
 import { getConversationAccess } from '@/lib/conversation-access'
 import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
 import { toMessageDTO } from '@/lib/dto'
-import { publishFirebaseUserEvent } from '@/lib/firebase-admin'
-
 export const dynamic = 'force-dynamic'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -482,11 +481,9 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
     replyTo,
   )
 
-  await publishFirebaseUserEvent(
-    access.others.map((other: any) => other.id),
-    'message:new',
-    dto,
-  )
+  await notifyUsers(access.others.map((other: any) => other.id), 'message:new', dto)
 
   return ok({ message: dto })
 })
+
+

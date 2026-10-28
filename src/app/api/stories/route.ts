@@ -113,7 +113,8 @@ export const POST = handle(async (req: NextRequest) => {
   const recipientIds = recipients.docs
     .map((doc) => audience === 'friends' ? String(doc.data().ownerId ?? '') : doc.id)
     .filter((userId) => userId && userId !== auth.profile.id && !blockedIds.has(userId))
-  void notifyUsers(recipientIds, 'stories:update', { storyId: ref.id })
+  await notifyUsers(recipientIds, 'stories:update', { storyId: ref.id })
   const story = normalizeFirestoreValue({ id: ref.id, ...record })
   return ok({ story: toStoryDTO(story, auth.profile.publicId, { isOwn: true, viewedByMe: true }) })
 })
+
