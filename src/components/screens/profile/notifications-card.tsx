@@ -26,7 +26,13 @@ import {
   pushSupported,
 } from '@/lib/push-client'
 
-type PushView = 'checking' | 'unsupported' | 'default' | 'granted' | 'denied'
+type PushView =
+  | 'checking'
+  | 'unsupported'
+  | 'default'
+  | 'needs-subscription'
+  | 'granted'
+  | 'denied'
 
 /**
  * Notifications card for the profile screen: the UI for enabling pop-up push
@@ -48,23 +54,36 @@ export function NotificationsCard({
   const [testing, setTesting] = useState(false)
   const [prefBusy, setPrefBusy] = useState<Record<string, boolean>>({})
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     setIosHint(isIOSDevice() && !isStandalone())
     if (!pushSupported()) {
       setView('unsupported')
       return
     }
     const permission = notificationPermission()
-    setView(permission === 'unsupported' ? 'unsupported' : permission)
+    if (permission !== 'granted') {
+      setView(permission === 'unsupported' ? 'unsupported' : permission)
+      return
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const subscription = await registration.pushManager.getSubscription()
+      setView(subscription ? 'granted' : 'needs-subscription')
+    } catch (err) {
+      console.warn('[push] could not check this device subscription:', err)
+      setView('needs-subscription')
+    }
   }, [])
 
   useEffect(() => {
-    refresh()
+    const timer = window.setTimeout(() => void refresh())
+    return () => window.clearTimeout(timer)
   }, [refresh])
 
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh()
+      if (document.visibilityState === 'visible') void refresh()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
@@ -81,7 +100,7 @@ export function NotificationsCard({
       }
     } finally {
       setBusy(false)
-      refresh()
+      void refresh()
     }
   }
 
@@ -105,7 +124,9 @@ export function NotificationsCard({
           res.delivered === 1 ? 'Test notification sent' : `Test notification sent to ${res.delivered} devices`,
         )
       } else {
-        toast.warning('No device subscribed yet — enable notifications on a device first.')
+        toast.warning(
+          'No test notification was delivered. Check this device’s subscription and the server VAPID configuration.',
+        )
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not send the test notification.')
@@ -185,7 +206,7 @@ export function NotificationsCard({
             </div>
           )}
 
-          {view === 'default' && (
+          {(view === 'default' || view === 'needs-subscription') && (
             <div className="space-y-2">
               <Button onClick={() => void handleEnable()} disabled={busy}>
                 {busy ? (
@@ -196,7 +217,9 @@ export function NotificationsCard({
                 Enable notifications
               </Button>
               <p className="text-[11px] text-muted-foreground">
-                Your browser will ask for permission. You can turn this off anytime.
+                {view === 'default'
+                  ? 'Your browser will ask for permission. You can turn this off anytime.'
+                  : 'Permission is granted, but this device is not registered for push yet. Tap to finish setup.'}
               </p>
             </div>
           )}
