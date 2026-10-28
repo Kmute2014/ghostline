@@ -1,4 +1,4 @@
-
+﻿
 import {
   applicationDefault,
   cert,
@@ -17,9 +17,9 @@ let adminApp: App | undefined
 function getAdminApp(): App {
   if (adminApp) return adminApp
 
-  const existingApp = getApps()[0]
-  if (existingApp) {
-    adminApp = existingApp
+  const existing = getApps()[0]
+  if (existing) {
+    adminApp = existing
     return adminApp
   }
 
@@ -28,7 +28,6 @@ function getAdminApp(): App {
     process.env.FIREBASE_PROJECT_ID ??
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
 
-  
   const serviceAccountValue =
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON ??
     (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64
@@ -46,6 +45,29 @@ function getAdminApp(): App {
         })
       : undefined)
 
+  if (serviceAccountValue) {
+    let serviceAccount
+    try {
+      serviceAccount = JSON.parse(serviceAccountValue)
+    } catch {
+      throw new Error(
+        'Firebase service-account environment variable does not contain valid JSON.',
+      )
+    }
+
+    adminApp = initializeApp({
+      credential: cert(serviceAccount),
+      ...(projectId ? { projectId } : {}),
+    })
+  } else {
+    adminApp = initializeApp({
+      credential: applicationDefault(),
+      ...(projectId ? { projectId } : {}),
+    })
+  }
+
+  return adminApp
+}
 export function getFirebaseAdminFirestore() {
   return getFirestore(getAdminApp())
 }
@@ -105,3 +127,4 @@ export async function publishFirebaseBroadcastEvent(
       expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     })
 }
+
