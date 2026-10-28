@@ -17,8 +17,27 @@ export const NAV_ITEMS: { tab: Tab; label: string; icon: React.ComponentType<{ c
 const TAP_SPRING = { type: 'spring' as const, stiffness: 500, damping: 30 }
 const PILL_SPRING = { type: 'spring' as const, stiffness: 500, damping: 35 }
 
+function getBadgeCount(
+  tab: Tab,
+  unread: number,
+  activityCounts: Record<Tab, number>,
+  peopleOnlineCount: number | null,
+): number | null {
+  if (tab === 'people') return peopleOnlineCount
+  if (tab === 'chats') return unread > 0 ? unread : null
+  return activityCounts[tab] > 0 ? activityCounts[tab] : null
+}
+
 /** Mobile: fixed bottom navigation bar (thumb friendly, 5 destinations) */
-export function BottomNav({ unread, activityCounts }: { unread: number; activityCounts: Record<Tab, number> }) {
+export function BottomNav({
+  unread,
+  activityCounts,
+  peopleOnlineCount,
+}: {
+  unread: number
+  activityCounts: Record<Tab, number>
+  peopleOnlineCount: number | null
+}) {
   const { tab, setTab } = useAppStore()
   const reduced = useReducedMotion() ?? false
   return (
@@ -29,11 +48,13 @@ export function BottomNav({ unread, activityCounts }: { unread: number; activity
       <div className="grid grid-cols-6">
         {NAV_ITEMS.map(({ tab: t, label, icon: Icon }) => {
           const active = tab === t
+          const badgeCount = getBadgeCount(t, unread, activityCounts, peopleOnlineCount)
           return (
             <motion.button
               key={t}
               onClick={() => setTab(t)}
               aria-current={active ? 'page' : undefined}
+              aria-label={t === 'people' && badgeCount !== null ? `${label}, ${badgeCount} online` : label}
               whileTap={reduced ? undefined : { scale: 0.82 }}
               transition={TAP_SPRING}
               className={cn(
@@ -47,11 +68,9 @@ export function BottomNav({ unread, activityCounts }: { unread: number; activity
                 transition={TAP_SPRING}
               >
                 <Icon className={cn('h-5 w-5 transition-transform', active && 'scale-110')} />
-                {(t === 'chats' ? unread : activityCounts[t]) > 0 && (
+                {badgeCount !== null && (
                   <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
-                    {(t === 'chats' ? unread : activityCounts[t]) > 99
-                      ? '99+'
-                      : t === 'chats' ? unread : activityCounts[t]}
+                    {badgeCount > 99 ? '99+' : badgeCount}
                   </span>
                 )}
               </motion.span>
@@ -72,7 +91,15 @@ export function BottomNav({ unread, activityCounts }: { unread: number; activity
 }
 
 /** Desktop: persistent sidebar */
-export function SideNav({ unread, activityCounts }: { unread: number; activityCounts: Record<Tab, number> }) {
+export function SideNav({
+  unread,
+  activityCounts,
+  peopleOnlineCount,
+}: {
+  unread: number
+  activityCounts: Record<Tab, number>
+  peopleOnlineCount: number | null
+}) {
   const { tab, setTab } = useAppStore()
   const reduced = useReducedMotion() ?? false
   return (
@@ -80,11 +107,13 @@ export function SideNav({ unread, activityCounts }: { unread: number; activityCo
       <nav aria-label="Main navigation" className="p-3 space-y-1">
         {NAV_ITEMS.map(({ tab: t, label, icon: Icon }) => {
           const active = tab === t
+          const badgeCount = getBadgeCount(t, unread, activityCounts, peopleOnlineCount)
           return (
             <motion.button
               key={t}
               onClick={() => setTab(t)}
               aria-current={active ? 'page' : undefined}
+              aria-label={t === 'people' && badgeCount !== null ? `${label}, ${badgeCount} online` : label}
               whileTap={reduced ? undefined : { scale: 0.97 }}
               transition={TAP_SPRING}
               className={cn(
@@ -96,11 +125,9 @@ export function SideNav({ unread, activityCounts }: { unread: number; activityCo
             >
               <Icon className="h-5 w-5" />
               {label}
-              {(t === 'chats' ? unread : activityCounts[t]) > 0 && (
+              {badgeCount !== null && (
                 <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                  {(t === 'chats' ? unread : activityCounts[t]) > 99
-                    ? '99+'
-                    : t === 'chats' ? unread : activityCounts[t]}
+                  {badgeCount > 99 ? '99+' : badgeCount}
                 </span>
               )}
               {active && (

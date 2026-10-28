@@ -89,6 +89,14 @@ export function AppRoot() {
     retry: 1,
   })
 
+  const onlinePeople = useQuery({
+    queryKey: ['people'],
+    queryFn: api.getPeople,
+    enabled: !!profile,
+    staleTime: 10_000,
+    refetchInterval: 20_000,
+  })
+
   useEffect(() => {
     if (session.data) {
       setProfile(session.data.authenticated ? session.data.profile : null)
@@ -406,7 +414,11 @@ export function AppRoot() {
       </header>
 
       <div className="flex flex-1 w-full">
-        <SideNav unread={unread} activityCounts={activityCounts} />
+        <SideNav
+          unread={unread}
+          activityCounts={activityCounts}
+          peopleOnlineCount={onlinePeople.data?.count ?? null}
+        />
         <main
           className={cn(
             'flex-1 min-w-0 flex flex-col',
@@ -448,7 +460,13 @@ export function AppRoot() {
         </main>
       </div>
 
-      {!chatOpen && <BottomNav unread={unread} activityCounts={activityCounts} />}
+      {!chatOpen && (
+        <BottomNav
+          unread={unread}
+          activityCounts={activityCounts}
+          peopleOnlineCount={onlinePeople.data?.count ?? null}
+        />
+      )}
       {/* Add-to-Home-Screen popup with auto-triggers â€” reopens every session until installed */}
       <InstallPrompt
         pwa={pwa}
