@@ -723,6 +723,18 @@ export async function startRealtimeService(): Promise<void> {
             if (p.conversationId && ids.length) void pushConversationNewToOffline(p.conversationId, ids, p.byPublicId ?? null)
           } else if (event === 'buzz:notification' && payload && typeof payload === 'object') {
             for (const id of ids) void sendPushToUser(id, payload as PushPayload)
+          } else if (event === 'stories:update' && payload && typeof payload === 'object') {
+            const storyId = typeof payload.storyId === 'string' ? payload.storyId : null
+            if (storyId) {
+              for (const id of ids) {
+                void sendPushToUser(id, {
+                  title: 'New story',
+                  body: 'Someone shared a story with you.',
+                  tag: `story-${storyId}`,
+                  url: '/?tab=stories',
+                })
+              }
+            }
           }
           res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true }))
         } catch {
@@ -752,4 +764,3 @@ export async function startRealtimeService(): Promise<void> {
     await runSweeps()
   })
 }
-

@@ -3,6 +3,7 @@ import { Timestamp } from 'firebase-admin/firestore'
 import { handle, ok, unauthorized, badRequest, tooMany } from '@/lib/api-helpers'
 import { getAuth } from '@/lib/session'
 import { getFirebaseAdminFirestore } from '@/lib/firebase-admin'
+import { notifyUsers } from '@/lib/notify'
 import { rateLimit, LIMITS } from '@/lib/rate-limit'
 import { STORY_TTL_HOURS } from '@/lib/expire'
 import { toStoryDTO, avatarUrlFor } from '@/lib/dto'
@@ -98,7 +99,21 @@ export const POST = handle(async (req: NextRequest) => {
   const ref = firestore.collection('stories').doc()
   const record = { ownerId: auth.profile.id, type, text: text || null, fileId, audience, status: 'active', createdAt, expiresAt }
   await ref.set(record)
+  const [recipients, blockedAsOwner, blockedByOthers] = await Promise.all([
+    audience === 'friends'
+      ? firestore.collection('contacts').where('contactId', '==', auth.profile.id).get()
+      : firestore.collection('profiles').get(),
+    firestore.collection('blockedUsers').where('blockerId', '==', auth.profile.id).get(),
+    firestore.collection('blockedUsers').where('blockedId', '==', auth.profile.id).get(),
+  ])
+  const blockedIds = new Set([
+    ...blockedAsOwner.docs.map((doc) => String(doc.data().blockedId ?? '')),
+    ...blockedByOthers.docs.map((doc) => String(doc.data().blockerId ?? '')),
+  ])
+  const recipientIds = recipients.docs
+    .map((doc) => audience === 'friends' ? String(doc.data().ownerId ?? '') : doc.id)
+    .filter((userId) => userId && userId !== auth.profile.id && !blockedIds.has(userId))
+  void notifyUsers(recipientIds, 'stories:update', { storyId: ref.id })
   const story = normalizeFirestoreValue({ id: ref.id, ...record })
   return ok({ story: toStoryDTO(story, auth.profile.publicId, { isOwn: true, viewedByMe: true }) })
 })
-

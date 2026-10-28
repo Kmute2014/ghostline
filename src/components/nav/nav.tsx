@@ -18,7 +18,7 @@ const TAP_SPRING = { type: 'spring' as const, stiffness: 500, damping: 30 }
 const PILL_SPRING = { type: 'spring' as const, stiffness: 500, damping: 35 }
 
 /** Mobile: fixed bottom navigation bar (thumb friendly, 5 destinations) */
-export function BottomNav({ unread }: { unread: number }) {
+export function BottomNav({ unread, activityCounts }: { unread: number; activityCounts: Record<Tab, number> }) {
   const { tab, setTab } = useAppStore()
   const reduced = useReducedMotion() ?? false
   return (
@@ -47,9 +47,11 @@ export function BottomNav({ unread }: { unread: number }) {
                 transition={TAP_SPRING}
               >
                 <Icon className={cn('h-5 w-5 transition-transform', active && 'scale-110')} />
-                {t === 'chats' && unread > 0 && (
+                {(t === 'chats' ? unread : activityCounts[t]) > 0 && (
                   <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
-                    {unread > 99 ? '99+' : unread}
+                    {(t === 'chats' ? unread : activityCounts[t]) > 99
+                      ? '99+'
+                      : t === 'chats' ? unread : activityCounts[t]}
                   </span>
                 )}
               </motion.span>
@@ -70,7 +72,7 @@ export function BottomNav({ unread }: { unread: number }) {
 }
 
 /** Desktop: persistent sidebar */
-export function SideNav({ unread }: { unread: number }) {
+export function SideNav({ unread, activityCounts }: { unread: number; activityCounts: Record<Tab, number> }) {
   const { tab, setTab } = useAppStore()
   const reduced = useReducedMotion() ?? false
   return (
@@ -94,9 +96,11 @@ export function SideNav({ unread }: { unread: number }) {
             >
               <Icon className="h-5 w-5" />
               {label}
-              {t === 'chats' && unread > 0 && (
+              {(t === 'chats' ? unread : activityCounts[t]) > 0 && (
                 <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                  {unread > 99 ? '99+' : unread}
+                  {(t === 'chats' ? unread : activityCounts[t]) > 99
+                    ? '99+'
+                    : t === 'chats' ? unread : activityCounts[t]}
                 </span>
               )}
               {active && (

@@ -96,11 +96,35 @@ function processEvent(
       queryClient.invalidateQueries({ queryKey: ['nearby'] })
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       queryClient.invalidateQueries({ queryKey: ['contacts'] })
+      if (
+        payload.online === true &&
+        typeof payload.publicId === 'string' &&
+        typeof payload.lastSeenAt === 'string' &&
+        useAppStore.getState().tab !== 'people'
+      ) {
+        useAppStore.getState().incrementActivity('people', `${payload.publicId}:${payload.lastSeenAt}`)
+      }
       return
     case 'feed:update':
       queryClient.invalidateQueries({ queryKey: ['posts'] })
       if (payload.postId) {
         queryClient.invalidateQueries({ queryKey: ['post-thread', payload.postId] })
+      }
+      if (
+        payload.reason === 'post' &&
+        typeof payload.postId === 'string' &&
+        useAppStore.getState().tab !== 'feed'
+      ) {
+        useAppStore.getState().incrementActivity('feed', payload.postId)
+      }
+      return
+    case 'stories:update':
+      queryClient.invalidateQueries({ queryKey: ['stories'] })
+      if (
+        typeof payload.storyId === 'string' &&
+        useAppStore.getState().tab !== 'stories'
+      ) {
+        useAppStore.getState().incrementActivity('stories', payload.storyId)
       }
       return
     case 'buzz:notification':
@@ -204,5 +228,4 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined, on
     }
   }, [firebaseToken, queryClient, onConnectionChange])
 }
-
 

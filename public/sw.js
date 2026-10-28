@@ -7,7 +7,7 @@
  * 3. notificationclick: focuses the running app or opens a deep link.
  */
 
-const VERSION = 'hushly-v4'
+const VERSION = 'hushly-v5'
 const SHELL_CACHE = `${VERSION}-shell`
 const STATIC_CACHE = `${VERSION}-static`
 
@@ -119,15 +119,11 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     (async () => {
-      // Suppress the OS banner when the user is actively looking at the app —
-      // in-app UI already shows the message there.
-      const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      if (clientList.some((c) => c.visibilityState === 'visible' && c.focused)) return
-
       await self.registration.showNotification(payload.title, {
         body: payload.body,
         tag: payload.tag || 'ghostline',
         renotify: Boolean(payload.tag),
+        silent: false,
         icon: '/icon-192.png',
         badge: '/icon-192.png',
         data: { url: payload.url || '/' },

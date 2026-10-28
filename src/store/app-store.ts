@@ -18,6 +18,8 @@ type AppState = {
 
   tab: Tab
   setTab: (t: Tab) => void
+  activityCounts: Record<Tab, number>
+  incrementActivity: (tab: Tab, eventId: string) => void
 
   /** When set, the chat view is open (stacked above the current tab) */
   activeConversationId: string | null
@@ -46,6 +48,18 @@ export const useAppStore = create<AppState>((set) => ({
   setSocketConnected: (socketConnected) => set({ socketConnected }),
 
   tab: 'people',
+  activityCounts: { nearby: 0, people: 0, feed: 0, stories: 0, chats: 0, profile: 0 },
+  incrementActivity: (() => {
+    const seenEvents = new Set<string>()
+    return (tab, eventId) => {
+      if (!eventId || seenEvents.has(`${tab}:${eventId}`)) return
+      seenEvents.add(`${tab}:${eventId}`)
+      if (seenEvents.size > 500) seenEvents.clear()
+      set((state) => ({
+        activityCounts: { ...state.activityCounts, [tab]: state.activityCounts[tab] + 1 },
+      }))
+    }
+  })(),
   // Switching tabs from the nav always pops an open chat view (iOS-style:
   // tapping a tab while pushed into a conversation returns to that tab).
   setTab: (tab) => {
@@ -56,7 +70,11 @@ export const useAppStore = create<AppState>((set) => ({
         /* private mode */
       }
     }
-    set({ tab, activeConversationId: null })
+    set((state) => ({
+      tab,
+      activeConversationId: null,
+      activityCounts: { ...state.activityCounts, [tab]: 0 },
+    }))
   },
 
   activeConversationId: null,

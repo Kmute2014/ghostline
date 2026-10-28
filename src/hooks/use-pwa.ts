@@ -114,9 +114,9 @@ export function usePwaRuntime(onDeepLink?: (path: string) => void) {
     const params = new URLSearchParams(window.location.search)
     const chat = params.get('chat')
     const tab = params.get('tab')
-    if (chat || tab === 'feed') {
+    if (chat || tab === 'feed' || tab === 'stories' || tab === 'people') {
       window.history.replaceState(null, '', window.location.pathname)
-      deepLinkRef.current?.(chat ? `/?chat=${encodeURIComponent(chat)}` : '/?tab=feed')
+      deepLinkRef.current?.(chat ? `/?chat=${encodeURIComponent(chat)}` : `/?tab=${tab}`)
     }
 
     const onMessage = (event: MessageEvent) => {
@@ -127,7 +127,10 @@ export function usePwaRuntime(onDeepLink?: (path: string) => void) {
       ) {
         const match = data.url.match(/[?&]chat=([^&]+)/)
         if (match) deepLinkRef.current?.(`/?chat=${decodeURIComponent(match[1])}`)
-        else if (/[?&]tab=feed(?:&|$)/.test(data.url)) deepLinkRef.current?.('/?tab=feed')
+        else {
+          const tabMatch = data.url.match(/[?&]tab=(feed|stories|people)(?:&|$)/)
+          if (tabMatch) deepLinkRef.current?.(`/?tab=${tabMatch[1]}`)
+        }
       }
     }
     navigator.serviceWorker?.addEventListener('message', onMessage)

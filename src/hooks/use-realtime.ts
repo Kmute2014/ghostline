@@ -18,6 +18,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
   const setSocketConnected = useAppStore((s) => s.setSocketConnected)
   const setTab = useAppStore((s) => s.setTab)
   const setTyping = useAppStore((s) => s.setTyping)
+  const incrementActivity = useAppStore((s) => s.incrementActivity)
 
   const activeRef = useRef(activeConversationId)
   const publicIdRef = useRef(myPublicId)
@@ -104,11 +105,14 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       }
     }
 
-    const onPresenceUpdate = () => {
+    const onPresenceUpdate = (data: { publicId?: string; online?: boolean; lastSeenAt?: string }) => {
       queryClient.invalidateQueries({ queryKey: ['people'] })
       queryClient.invalidateQueries({ queryKey: ['nearby'] })
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       queryClient.invalidateQueries({ queryKey: ['contacts'] })
+      if (data?.online && data.publicId && data.lastSeenAt && useAppStore.getState().tab !== 'people') {
+        incrementActivity('people', `${data.publicId}:${data.lastSeenAt}`)
+      }
     }
 
     const onConversationUpdated = (data: { conversationId?: string }) => {
@@ -155,6 +159,16 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       if (data?.postId) {
         queryClient.invalidateQueries({ queryKey: ['post-thread', data.postId] })
       }
+      if (data?.reason === 'post' && data.postId && useAppStore.getState().tab !== 'feed') {
+        incrementActivity('feed', data.postId)
+      }
+    }
+
+    const onStoriesUpdate = (data: { storyId?: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['stories'] })
+      if (data?.storyId && useAppStore.getState().tab !== 'stories') {
+        incrementActivity('stories', data.storyId)
+      }
     }
 
     const onBuzzNotification = (data: { title?: string; body?: string; postId?: string }) => {
@@ -182,6 +196,7 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
     socket.on('message:changed', onMessageChanged)
     socket.on('typing', onTyping)
     socket.on('feed:update', onFeedUpdate)
+    socket.on('stories:update', onStoriesUpdate)
     socket.on('buzz:notification', onBuzzNotification)
     if (socket.connected) onConnect()
 
@@ -203,8 +218,8 @@ export function useRealtime(socketToken: string | null | undefined, myPublicId: 
       socket.off('message:changed', onMessageChanged)
       socket.off('typing', onTyping)
       socket.off('feed:update', onFeedUpdate)
+      socket.off('stories:update', onStoriesUpdate)
       socket.off('buzz:notification', onBuzzNotification)
     }
-  }, [socketToken, myPublicId, queryClient, closeConversation, setSocketConnected, setTab, setTyping])
+  }, [socketToken, myPublicId, queryClient, closeConversation, setSocketConnected, setTab, setTyping, incrementActivity])
 }
-

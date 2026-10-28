@@ -57,6 +57,7 @@ export function AppRoot() {
     setProfile,
     tab,
     setTab,
+    activityCounts,
     activeConversationId,
     closeConversation,
     pendingInviteCode,
@@ -72,7 +73,10 @@ export function AppRoot() {
     (path: string) => {
       const m = path.match(/[?&]chat=([^&]+)/)
       if (m) openConversation(decodeURIComponent(m[1]))
-      if (/[?&]tab=feed(?:&|$)/.test(path)) setTab('feed')
+      const requestedTab = new URL(path, window.location.origin).searchParams.get('tab')
+      if (requestedTab === 'feed' || requestedTab === 'stories' || requestedTab === 'people') {
+        setTab(requestedTab)
+      }
     },
     [openConversation, setTab],
   )
@@ -402,7 +406,7 @@ export function AppRoot() {
       </header>
 
       <div className="flex flex-1 w-full">
-        <SideNav unread={unread} />
+        <SideNav unread={unread} activityCounts={activityCounts} />
         <main
           className={cn(
             'flex-1 min-w-0 flex flex-col',
@@ -444,7 +448,7 @@ export function AppRoot() {
         </main>
       </div>
 
-      {!chatOpen && <BottomNav unread={unread} />}
+      {!chatOpen && <BottomNav unread={unread} activityCounts={activityCounts} />}
       {/* Add-to-Home-Screen popup with auto-triggers â€” reopens every session until installed */}
       <InstallPrompt
         pwa={pwa}
@@ -463,4 +467,3 @@ export function AppRoot() {
     </div>
   )
 }
-
