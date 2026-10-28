@@ -17,14 +17,14 @@ import { cn } from '@/lib/utils'
 
 function previewText(t: { type: string; text: string | null; deletedForEveryone?: boolean }): string {
   if (t.deletedForEveryone) return 'This message was deleted'
-  if (t.type === 'image') return t.text ? `Photo · ${t.text}` : 'Photo'
-  if (t.type === 'video') return t.text ? `Video · ${t.text}` : 'Video'
+  if (t.type === 'image') return t.text ? `Photo Â· ${t.text}` : 'Photo'
+  if (t.type === 'video') return t.text ? `Video Â· ${t.text}` : 'Video'
   return t.text ?? ''
 }
 
-/** Row preview text; groups get a "Sender: …" prefix like WhatsApp. */
+/** Row preview text; groups get a "Sender: â€¦" prefix like WhatsApp. */
 function rowPreview(c: ConversationSummary, myPublicId: string | undefined): string {
-  if (!c.lastMessage) return c.type === 'group' ? 'Say hi — no messages yet' : 'Say hi — no messages yet'
+  if (!c.lastMessage) return c.type === 'group' ? 'Say hi â€” no messages yet' : 'Say hi â€” no messages yet'
   const body = previewText(c.lastMessage) || 'Media message'
   if (c.type === 'group') {
     if (c.lastMessage.type === 'system') return body
@@ -45,7 +45,6 @@ export function ChatsScreen() {
   const conversations = useQuery({
     queryKey: ['conversations'],
     queryFn: api.getConversations,
-    refetchInterval: 30_000,
   })
 
   // Favourited users always float to the top (server sorts too; this keeps the
@@ -73,7 +72,7 @@ export function ChatsScreen() {
             Chats
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5">
-            Your people, your conversations. Favourites stay close 💬
+            Your people, your conversations. Favourites stay close ðŸ’¬
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -212,8 +211,8 @@ export function ChatsScreen() {
                             {c.lastMessage || c.unreadCount > 0
                               ? rowPreview(c, myPublicId)
                               : isGroup
-                                ? `${c.members.length + 1} members — say hi`
-                                : 'Say hi — no messages yet'}
+                                ? `${c.members.length + 1} members â€” say hi`
+                                : 'Say hi â€” no messages yet'}
                           </p>
                           {c.unreadCount > 0 && (
                             <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">

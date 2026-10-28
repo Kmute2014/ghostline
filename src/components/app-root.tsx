@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type TouchEvent as ReactTouchEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -205,7 +205,6 @@ export function AppRoot() {
   const conversationsQuery = useQuery({
     queryKey: ['conversations'],
     queryFn: api.getConversations,
-    refetchInterval: 30_000,
     enabled: Boolean(profile),
   })
   const unread = (conversationsQuery.data?.conversations ?? []).reduce((n, c) => n + c.unreadCount, 0)

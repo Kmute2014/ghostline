@@ -1,8 +1,9 @@
-﻿'use client'
+'use client'
 
 import { useEffect } from 'react'
 import {
   collection,
+  Timestamp,
   limit,
   onSnapshot,
   orderBy,
@@ -18,6 +19,7 @@ import { useAppStore } from '@/store/app-store'
 import type { ConversationSummary, MessageDTO } from '@/lib/types'
 
 type RealtimeEvent = {
+  id: string
   event: string
   payload: DocumentData
 }
@@ -30,8 +32,140 @@ function processEvent(
   switch (event) {
     case 'message:new': {
       const message = payload as MessageDTO
-      queryClient.invalidateQueries({ queryKey: ['messages', message.conversationId] })
-      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      const normalizeDate = (value: unknown): unknown => {
+        if (value instanceof Date) return value.toISOString()
+
+        if (value && typeof value === 'object') {
+          const timestamp = value as { toDate?: () => Date; seconds?: number }
+
+          if (typeof timestamp.toDate === 'function') {
+            return timestamp.toDate().toISOString()
+          }
+
+          if (typeof timestamp.seconds === 'number') {
+            return new Date(timestamp.seconds * 1000).toISOString()
+          }
+        }
+
+        return value
+      }
+
+      const toMillis = (value: unknown): number => {
+        const normalized = normalizeDate(value)
+
+        if (typeof normalized === 'number') return normalized
+
+        if (typeof normalized === 'string') {
+          const milliseconds = Date.parse(normalized)
+          return Number.isFinite(milliseconds) ? milliseconds : 0
+        }
+
+        return 0
+      }
+
+      const cacheMessage = {
+        ...message,
+        createdAt: normalizeDate(message.createdAt),
+        editedAt: normalizeDate(message.editedAt),
+      } as MessageDTO
+
+      const currentProfileId = useAppStore.getState().profile?.publicId
+      const isFromCurrentUser = message.senderPublicId === currentProfileId
+      const isCurrentlyReading =
+        useAppStore.getState().activeConversationId === message.conversationId &&
+        document.visibilityState === 'visible'
+
+      let messageAlreadyCached = false
+
+      queryClient.setQueryData<any>(
+        ['messages', message.conversationId],
+        (old) => {
+          if (!old || !Array.isArray(old.pages) || old.pages.length === 0) {
+            return old
+          }
+
+          messageAlreadyCached = old.pages.some(
+            (page: any) =>
+              Array.isArray(page.messages) &&
+              page.messages.some(
+                (item: any) =>
+                  item.id === cacheMessage.id ||
+                  (cacheMessage.clientId && item.clientId === cacheMessage.clientId),
+              ),
+          )
+
+          if (messageAlreadyCached) return old
+
+          const pages = [...old.pages]
+          const firstPage = pages[0]
+          const currentMessages = Array.isArray(firstPage.messages)
+            ? firstPage.messages
+            : []
+
+          pages[0] = {
+            ...firstPage,
+            messages: [...currentMessages, cacheMessage].sort(
+              (first: any, second: any) =>
+                toMillis(second.createdAt) - toMillis(first.createdAt),
+            ),
+          }
+
+          return { ...old, pages }
+        },
+      )
+
+      queryClient.setQueryData<any>(
+        ['conversations'],
+        (old) => {
+          if (!old || !Array.isArray(old.conversations)) return old
+
+          let found = false
+
+          const conversations = old.conversations.map((conversation: any) => {
+            if (conversation.id !== message.conversationId) return conversation
+
+            found = true
+
+            const updated = {
+              ...conversation,
+              updatedAt: cacheMessage.createdAt,
+              lastMessage: cacheMessage,
+            }
+
+            if ('lastMessageAt' in conversation) {
+              updated.lastMessageAt = cacheMessage.createdAt
+            }
+
+            if ('lastMessagePreview' in conversation) {
+              updated.lastMessagePreview =
+                message.type === 'image'
+                  ? 'Sent a photo'
+                  : message.type === 'video'
+                    ? 'Sent a video'
+                    : message.text ?? 'New message'
+            }
+
+            if (typeof conversation.unreadCount === 'number') {
+              if (isCurrentlyReading) {
+                updated.unreadCount = 0
+              } else if (!isFromCurrentUser && !messageAlreadyCached) {
+                updated.unreadCount = conversation.unreadCount + 1
+              }
+            }
+
+            return updated
+          })
+
+          if (!found) return old
+
+          conversations.sort(
+            (first: any, second: any) =>
+              toMillis(second.updatedAt) - toMillis(first.updatedAt),
+          )
+
+          return { ...old, conversations }
+        },
+      )
       if (message.senderPublicId === useAppStore.getState().profile?.publicId) return
       if (
         useAppStore.getState().activeConversationId === message.conversationId &&
@@ -148,32 +282,44 @@ function attachEventListener(
   onError: (error: Error) => void,
 ) {
   const collectionRef = collection(getFirebaseClientFirestore(), collectionPath.join('/'))
+  const startedAt = Timestamp.fromMillis(Date.now() - 2_000)
   const eventsQuery = collectionPath[0] === 'realtimeBroadcasts'
-    ? query(collectionRef, where('room', '==', 'feed'), orderBy('createdAt', 'desc'), limit(50))
-    : query(collectionRef, orderBy('createdAt', 'desc'), limit(50))
-  let initialSnapshot = true
+    ? query(
+        collectionRef,
+        where('room', '==', 'feed'),
+        where('createdAt', '>=', startedAt),
+        orderBy('createdAt', 'desc'),
+        limit(50),
+      )
+    : query(
+        collectionRef,
+        where('createdAt', '>=', startedAt),
+        orderBy('createdAt', 'desc'),
+        limit(50),
+      )
 
   return onSnapshot(
     eventsQuery,
     (snapshot) => {
-      if (initialSnapshot) {
-        initialSnapshot = false
-        return
-      }
       for (const change of snapshot.docChanges()) {
         if (change.type !== 'added') continue
+
         const data = change.doc.data()
         if (typeof data.event !== 'string' || typeof data.payload !== 'object' || !data.payload) {
           console.error('[realtime] Ignoring malformed Firebase event:', change.doc.id)
           continue
         }
-        onEvent({ event: data.event, payload: data.payload as DocumentData })
+
+        onEvent({
+          id: collectionPath.join('/') + '/' + change.doc.id,
+          event: data.event,
+          payload: data.payload as DocumentData,
+        })
       }
     },
     onError,
   )
 }
-
 export function useFirebaseRealtime(firebaseToken: string | null | undefined, onConnectionChange?: (connected: boolean) => void) {
   const queryClient = useQueryClient()
 
@@ -187,6 +333,7 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined, on
     let active = true
     let stopUserEvents: (() => void) | undefined
     let stopBroadcastEvents: (() => void) | undefined
+    let unsubscribeStore: (() => void) | undefined
 
     void (async () => {
       try {
@@ -194,8 +341,17 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined, on
         const credential = await signInWithCustomToken(auth, firebaseToken)
         if (!active) return
 
-        const handleEvent = ({ event, payload }: RealtimeEvent) => {
+                const seenEventIds = new Set<string>()
+        const handleEvent = ({ id, event, payload }: RealtimeEvent) => {
           if (useAppStore.getState().socketConnected) return
+          if (seenEventIds.has(id)) return
+
+          seenEventIds.add(id)
+          if (seenEventIds.size > 2000) {
+            const oldest = seenEventIds.values().next().value
+            if (typeof oldest === 'string') seenEventIds.delete(oldest)
+          }
+
           processEvent(queryClient, event, payload)
         }
         const onError = (error: Error) => {
@@ -203,16 +359,40 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined, on
           onConnectionChange?.(false)
         }
 
-        stopUserEvents = attachEventListener(
+                stopUserEvents = attachEventListener(
           ['realtimeUsers', credential.user.uid, 'events'],
           handleEvent,
           onError,
         )
-        stopBroadcastEvents = attachEventListener(
-          ['realtimeBroadcasts'],
-          handleEvent,
-          onError,
-        )
+
+        const syncBroadcastListener = (refreshPosts: boolean) => {
+          const shouldListenToFeed = useAppStore.getState().tab === 'feed'
+
+          if (shouldListenToFeed && !stopBroadcastEvents) {
+            stopBroadcastEvents = attachEventListener(
+              ['realtimeBroadcasts'],
+              handleEvent,
+              onError,
+            )
+
+            if (refreshPosts) {
+              void queryClient.invalidateQueries({ queryKey: ['posts'] })
+            }
+          } else if (!shouldListenToFeed && stopBroadcastEvents) {
+            stopBroadcastEvents()
+            stopBroadcastEvents = undefined
+          }
+        }
+
+        unsubscribeStore = useAppStore.subscribe((state, previousState) => {
+          if (state.tab !== previousState.tab) {
+            syncBroadcastListener(
+              previousState.tab !== 'feed' && state.tab === 'feed',
+            )
+          }
+        })
+
+        syncBroadcastListener(false)
         onConnectionChange?.(true)
       } catch (error) {
         console.error('[realtime] Firebase authentication failed:', error)
@@ -222,10 +402,10 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined, on
 
     return () => {
       active = false
+      unsubscribeStore?.()
       stopUserEvents?.()
       stopBroadcastEvents?.()
       onConnectionChange?.(false)
     }
   }, [firebaseToken, queryClient, onConnectionChange])
 }
-
