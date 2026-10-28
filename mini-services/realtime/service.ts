@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Hushly realtime service (Socket.IO + Firestore).
  *
  * Firestore layout used here:
@@ -102,7 +102,7 @@ async function deleteSubcollection(
 export async function startRealtimeService(): Promise<void> {
   const PORT = Number(process.env.RT_PORT ?? 3003)
   if (await portBusy(PORT)) {
-    console.log(`[rt] :${PORT} already served — skipping duplicate start`)
+    console.log(`[rt] :${PORT} already served â€” skipping duplicate start`)
     return
   }
 
@@ -134,7 +134,7 @@ export async function startRealtimeService(): Promise<void> {
     const publicKey = process.env.VAPID_PUBLIC_KEY
     const privateKey = process.env.VAPID_PRIVATE_KEY
     if (!publicKey || !privateKey) {
-      console.warn('[push] VAPID keys missing — offline push notifications disabled')
+      console.warn('[push] VAPID keys missing â€” offline push notifications disabled')
       return false
     }
     try {
@@ -211,10 +211,10 @@ export async function startRealtimeService(): Promise<void> {
   }
 
   function previewFor(type: string, text: string | null): string {
-    if (type === 'image') return '📷 Sent a photo'
-    if (type === 'video') return '🎥 Sent a video'
+    if (type === 'image') return 'ðŸ“· Sent a photo'
+    if (type === 'video') return 'ðŸŽ¥ Sent a video'
     const value = (text ?? '').trim()
-    return value.length > 120 ? `${value.slice(0, 119)}…` : value || 'Sent a message'
+    return value.length > 120 ? `${value.slice(0, 119)}â€¦` : value || 'Sent a message'
   }
 
   async function pushMessageToOffline(
@@ -233,7 +233,7 @@ export async function startRealtimeService(): Promise<void> {
     const senderName = String(senderSnap.data()?.displayName ?? 'Someone')
     const conv = conversationSnap.data() ?? {}
     const isGroup = conv.type === 'group'
-    const title = isGroup ? `${String(conv.name ?? 'Group')} · ${senderName}` : `${senderName} · Ghostline`
+    const title = isGroup ? `${String(conv.name ?? 'Group')} Â· ${senderName}` : `${senderName} Â· Ghostline`
     await Promise.all(targets.map((id) => sendPushToUser(id, {
       title,
       body: previewFor(type, text),
@@ -678,7 +678,9 @@ export async function startRealtimeService(): Promise<void> {
       set?.delete(socket.id)
       if (set && set.size === 0) {
         socketsByUser.delete(userId)
-        await setOnline(userId, false)
+        // Presence is maintained by the authenticated HTTP heartbeat as well.
+        // Do not mark the user offline for a transient Socket.IO disconnect;
+        // sweepPresence() marks them offline after the heartbeat grace period.
       }
     }))
   }))
@@ -750,3 +752,4 @@ export async function startRealtimeService(): Promise<void> {
     await runSweeps()
   })
 }
+

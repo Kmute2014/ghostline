@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type TouchEvent as ReactTouchEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,6 +9,7 @@ import { HushlyMark } from '@/components/shared/hushly-mark'
 import { useAppStore, type Tab } from '@/store/app-store'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useFirebaseRealtime } from '@/hooks/use-firebase-realtime'
+import { usePresenceHeartbeat } from '@/hooks/use-presence-heartbeat'
 import { usePwaRuntime } from '@/hooks/use-pwa'
 import { Onboarding } from '@/components/screens/onboarding'
 import { BottomNav, SideNav } from '@/components/nav/nav'
@@ -41,7 +42,7 @@ function Splash() {
   return (
     <div className="app-shell flex flex-col items-center justify-center gap-3">
       <HushlyMark className="h-10 w-10 animate-pulse" aria-hidden />
-      <p className="text-sm text-muted-foreground">Tuning into the Hushly signal…</p>
+      <p className="text-sm text-muted-foreground">Tuning into the Hushly signalâ€¦</p>
     </div>
   )
 }
@@ -66,7 +67,7 @@ export function AppRoot() {
     setInstallPromptOpen,
   } = useAppStore()
 
-  // ── PWA runtime: SW registration, install prompt, notification deep links ──
+  // â”€â”€ PWA runtime: SW registration, install prompt, notification deep links â”€â”€
   const handleNotificationDeepLink = useCallback(
     (path: string) => {
       const m = path.match(/[?&]chat=([^&]+)/)
@@ -100,10 +101,10 @@ export function AppRoot() {
     }
   }, [setPendingInviteCode])
 
-  // ── Chat = pushed page (WhatsApp-style) ───────────────────────────────────
+  // â”€â”€ Chat = pushed page (WhatsApp-style) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Opening a chat pushes a history entry so the Android/iOS hardware back
   // gesture closes it. Any in-app dismissal (chat back button, nav tab tap,
-  // end/delete) consumes the pushed entry automatically — navigation always
+  // end/delete) consumes the pushed entry automatically â€” navigation always
   // overrides the back.
   const chatOpen = Boolean(activeConversationId)
   const suppressPopRef = useRef(false)
@@ -171,19 +172,22 @@ export function AppRoot() {
     suppressPopRef.current = false
   }, [chatOpen, closeConversation])
 
-  // ── Install popup sequencing ────────────────────────────────────────────────
+  // â”€â”€ Install popup sequencing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // The notification question is asked first; only once it is settled (enabled,
   // unsupported, denied, or dismissed this session) does the add-to-home-screen
-  // popup become eligible — two stacked dialogs on first load would be chaos.
+  // popup become eligible â€” two stacked dialogs on first load would be chaos.
   const [notifResolved, setNotifResolved] = useState(false)
   const handleNotifResolved = useCallback(() => setNotifResolved(true), [])
   const installEligible =
     !chatOpen && notifResolved && pwa.isMobile && !pwa.isStandalone && !pwa.installed
 
+  const [firebaseRealtimeReady, setFirebaseRealtimeReady] = useState(false)
   const socketToken = session.data?.socketToken ?? null
   const firebaseToken = session.data?.firebaseToken ?? null
   useRealtime(socketToken, profile?.publicId ?? null)
-  useFirebaseRealtime(firebaseToken)
+  useFirebaseRealtime(firebaseToken, setFirebaseRealtimeReady)
+  usePresenceHeartbeat(Boolean(profile))
+  const realtimeConnected = socketConnected || firebaseRealtimeReady
 
   // Lightweight global conversations poll: drives unread badges in nav
   const conversationsQuery = useQuery({
@@ -296,7 +300,7 @@ export function AppRoot() {
   }
 
   // Direction for the tab slide: derived from tab index order. Compared
-  // during render (guarded setState — the React "adjust state when props
+  // during render (guarded setState â€” the React "adjust state when props
   // change" pattern) so the enter variant has the correct direction
   // immediately, without refs.
   const [prevTab, setPrevTab] = useState<Tab>(tab)
@@ -377,22 +381,22 @@ export function AppRoot() {
             <HushlyMark className="h-5 w-5" aria-hidden />
           </span>
           <span className="font-semibold tracking-tight">Hushly</span>
-          <span className="hidden text-xs text-muted-foreground sm:inline">quiet connections ✨</span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">quiet connections âœ¨</span>
         </div>
         <div
-          title={socketConnected ? 'Realtime connected' : 'Realtime offline — retrying'}
+          title={realtimeConnected ? 'Realtime connected' : 'Realtime offline - retrying'}
           role="status"
           className="ml-auto flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-2.5 py-1.5"
         >
           <span
             className={cn(
               'h-1.5 w-1.5 rounded-full',
-              socketConnected ? 'bg-emerald-400 signal-dot' : 'bg-amber-500'
+              realtimeConnected ? 'bg-emerald-400 signal-dot' : 'bg-amber-500'
             )}
             aria-hidden
           />
           <span className="text-[11px] font-medium text-muted-foreground">
-            {socketConnected ? 'Live' : 'Reconnecting'}
+            {realtimeConnected ? 'Live' : 'Reconnecting'}
           </span>
         </div>
       </header>
@@ -434,14 +438,14 @@ export function AppRoot() {
           </div>
           {/* Sticky footer (desktop; mobile bottom nav plays this role) */}
           <footer className="hidden md:block mt-auto py-3 text-center text-[11px] text-muted-foreground border-t">
-            Hushly — quiet by design. See who's online, chat directly, stay in control of your
+            Hushly â€” quiet by design. See who's online, chat directly, stay in control of your
             visibility. 13+ only.
           </footer>
         </main>
       </div>
 
       {!chatOpen && <BottomNav unread={unread} />}
-      {/* Add-to-Home-Screen popup with auto-triggers — reopens every session until installed */}
+      {/* Add-to-Home-Screen popup with auto-triggers â€” reopens every session until installed */}
       <InstallPrompt
         pwa={pwa}
         active={installEligible && !tourOpen}
@@ -449,7 +453,7 @@ export function AppRoot() {
         onOpenChange={setInstallPromptOpen}
       />
       <FirstRunTour open={tourOpen} onOpenChange={handleTourOpenChange} />
-      {/* Notification permission nudge — reappears on every refresh until enabled.
+      {/* Notification permission nudge â€” reappears on every refresh until enabled.
           Suppressed while a deep-link invite dialog is up (never stack two dialogs). */}
       <NotificationPrompt
         active={tourSettled && !tourOpen && !chatOpen && !pendingInviteCode}
@@ -459,3 +463,4 @@ export function AppRoot() {
     </div>
   )
 }
+

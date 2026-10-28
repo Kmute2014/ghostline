@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect } from 'react'
 import {
@@ -75,7 +75,7 @@ function processEvent(
     case 'conversation:new':
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       if (payload.conversationId !== useAppStore.getState().activeConversationId) {
-        toast(payload.groupName ? `Added to “${payload.groupName}”` : 'New conversation started', {
+        toast(payload.groupName ? `Added to â€œ${payload.groupName}â€` : 'New conversation started', {
           description: 'Open Chats to say hello.',
         })
       }
@@ -147,11 +147,15 @@ function attachEventListener(
   )
 }
 
-export function useFirebaseRealtime(firebaseToken: string | null | undefined) {
+export function useFirebaseRealtime(firebaseToken: string | null | undefined, onConnectionChange?: (connected: boolean) => void) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!firebaseToken) return
+    if (!firebaseToken) {
+      onConnectionChange?.(false)
+      return
+    }
+    onConnectionChange?.(false)
 
     let active = true
     let stopUserEvents: (() => void) | undefined
@@ -169,6 +173,7 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined) {
         }
         const onError = (error: Error) => {
           console.error('[realtime] Firebase event listener failed:', error)
+          onConnectionChange?.(false)
         }
 
         stopUserEvents = attachEventListener(
@@ -181,8 +186,10 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined) {
           handleEvent,
           onError,
         )
+        onConnectionChange?.(true)
       } catch (error) {
         console.error('[realtime] Firebase authentication failed:', error)
+        onConnectionChange?.(false)
       }
     })()
 
@@ -190,6 +197,8 @@ export function useFirebaseRealtime(firebaseToken: string | null | undefined) {
       active = false
       stopUserEvents?.()
       stopBroadcastEvents?.()
+      onConnectionChange?.(false)
     }
-  }, [firebaseToken, queryClient])
+  }, [firebaseToken, queryClient, onConnectionChange])
 }
+
