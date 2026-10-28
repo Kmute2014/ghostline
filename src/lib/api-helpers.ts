@@ -32,7 +32,16 @@ export function handle<Args extends unknown[]>(
       if (err instanceof ApiError) {
         return fail(err.status, err.code, err.message, err.extra)
       }
-      console.error('[api] unhandled error:', err)
+      const request = args.find(
+  (arg): arg is Request =>
+    typeof Request !== 'undefined' && arg instanceof Request
+)
+
+console.error('[api] unhandled error:', {
+  method: request?.method,
+  url: request?.url,
+  error: err,
+})
       return fail(500, 'INTERNAL', 'Something went wrong. Please try again.')
     }
   }
